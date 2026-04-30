@@ -1,0 +1,131 @@
+name: port-integration-aws-tf
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/port-integration-aws-tf.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "terraform/**"
+      - ".github/workflows/port-integration-aws-tf.yml"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Terraform operation"
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+        default: plan
+      tf_workspace:
+        description: Terraform Cloud workspace name (tagged with port-integration-aws)
+        required: true
+        type: string
+      aws_region:
+        description: AWS region for OIDC (must match terraform.tfvars aws_region)
+        required: true
+        default: us-east-1
+        type: string
+      aws_role_arn:
+        description: IAM role for GitHub OIDC
+        required: false
+        default: arn:aws:iam::936835732720:role/github-actions-deploy
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.5
+          terraform_wrapper: false
+
+      - name: Terraform format
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+
+  terraform:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    concurrency:
+      group: port-integration-aws-tf-${{ github.event.inputs.tf_workspace }}
+      cancel-in-progress: false
+    env:
+      TF_WORKSPACE_NAME: ${{ github.event.inputs.tf_workspace }}
+      AWS_REGION: ${{ github.event.inputs.aws_region }}
+      TF_VAR_port_client_id: ${{ secrets.PORT_CLIENT_ID }}
+      TF_VAR_port_client_secret: ${{ secrets.PORT_CLIENT_SECRET }}
+      TF_VAR_live_events_api_key: ${{ secrets.PORT_LIVE_EVENTS_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.5
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ github.event.inputs.aws_role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Ensure Terraform Cloud workspace
+        id: ensure_workspace
+        uses: ./.github/actions/ensure-tfc-workspace
+        with:
+          tfc_token: ${{ secrets.TF_API_TOKEN }}
+          organization: gossamer-labs
+          workspace_name: ${{ github.event.inputs.tf_workspace }}
+          workspace_tags: port-integration-aws
+          execution_mode: local
+          create_if_missing: ${{ github.event.inputs.mode != 'destroy' }}
+
+      - name: Terraform init
+        if: ${{ github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'plan' || steps.ensure_workspace.outputs.workspace_exists == 'true' }}
+        working-directory: terraform
+        run: terraform init -upgrade -input=false
+
+      - name: Terraform format
+        if: ${{ github.event.inputs.mode != 'destroy' }}
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform validate
+        if: ${{ github.event.inputs.mode != 'destroy' }}
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform plan
+        if: ${{ github.event.inputs.mode == 'plan' }}
+        working-directory: terraform
+        run: terraform plan -input=false
+
+      - name: Terraform apply
+        if: ${{ github.event.inputs.mode == 'apply' }}
+        working-directory: terraform
+        run: terraform apply -auto-approve -input=false
+
+      - name: Terraform destroy
+        if: ${{ github.event.inputs.mode == 'destroy' && steps.ensure_workspace.outputs.workspace_exists == 'true' }}
+        working-directory: terraform
+        run: terraform destroy -auto-approve -input=false
