@@ -85,7 +85,10 @@ The **`terraform` job** sets **`TF_WORKSPACE`** from the `tf_workspace` input so
 
 ## Run locally
 
+Authenticate to AWS first so the Terraform AWS provider can reach your account (for example **`aws sso login`** if your profile uses IAM Identity Center; otherwise use the flow from [**AWS authentication**](#aws-authentication) above).
+
 ```bash
+aws sso login   # or your org’s AWS credential flow
 cd terraform
 export AWS_DEFAULT_REGION=us-east-2   # same value as aws_region in terraform.tfvars
 export TF_WORKSPACE=<your-tfc-workspace-name>   # optional but avoids init prompts
