@@ -32,20 +32,34 @@ Phase 1 does **not** require `TF_VAR_live_events_api_key`. Add it when you set `
 
 | File | Purpose |
 |------|---------|
+| [`terraform.tf`](terraform/terraform.tf) | Terraform version, **Terraform Cloud** org `gossamer-labs`, workspace tag **`port-integration-aws`**, AWS provider constraints |
+| [`providers.tf`](terraform/providers.tf) | AWS provider; **`default_tags`** (`Environment`, `ManagedBy`, `Project`, `Repository`) |
 | [`variables_network.tf`](terraform/variables_network.tf) | VPC / subnets (`network_*`), `aws_region` |
-| [`variables_integration.tf`](terraform/variables_integration.tf) | Port Ocean module (`port_*`, integration, ECS) |
-| [`network.tf`](terraform/network.tf) | Optional `terraform-aws-modules/vpc` (**v5.x** — compatible with the Port module’s AWS provider `~> 5.x`) |
+| [`variables_integration.tf`](terraform/variables_integration.tf) | Port Ocean module inputs (`port_*`, integration, ECS) |
+| [`network.tf`](terraform/network.tf) | `terraform-aws-modules/vpc` (**v5.x**, pairs with Port module’s AWS provider **5.x**) |
 | [`main.tf`](terraform/main.tf) | `module "aws"` — Port [`aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) |
-| [`terraform.tfvars`](terraform/terraform.tfvars) | Non-secret defaults (`integration_identifier` is set for this stack) |
+| [`outputs.tf`](terraform/outputs.tf) | VPC id, subnet ids, create mode |
+| [`terraform.tfvars`](terraform/terraform.tfvars) | Non-secret defaults (includes **`integration_identifier`**, **`aws_region`**) |
 
 ## Phase 1 vs phase 2
 
 - **Phase 1 (default in `terraform.tfvars`):** `allow_incoming_requests = false` — scheduled **POLLING** sync only; **no** ALB, API Gateway, or EventBridge. Good for first validation.
 - **Phase 2 (live events):** set `allow_incoming_requests = true`, generate `TF_VAR_live_events_api_key`, apply again. Per [Port docs](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/live-events), live events are **single-account only**. Multi-account needs separate planning.
+- **CI (phase 2):** add `TF_VAR_live_events_api_key: ${{ secrets.PORT_LIVE_EVENTS_API_KEY }}` to the **`terraform` job `env`** in [`.github/workflows/port-integration-aws-tf.yml`](.github/workflows/port-integration-aws-tf.yml) (see comment there); create the **`PORT_LIVE_EVENTS_API_KEY`** repository secret.
 
 ## Remote state (Terraform Cloud)
 
-Organization **`gossamer-labs`**, workspaces tagged **`port-integration-aws`**. Create or select a workspace, then run `terraform init` and choose it when prompted.
+Organization **`gossamer-labs`**. Workspaces that carry tag **`port-integration-aws`** are eligible for this configuration ([`terraform.tf`](terraform/terraform.tf) `cloud.workspaces.tags`).
+
+**Selecting a workspace (non-interactive):** set **`TF_WORKSPACE`** to the workspace **name** (same string as GitHub Actions `workflow_dispatch` → **`tf_workspace`**). Example:
+
+```bash
+export TF_WORKSPACE=my-team-port-aws
+terraform login   # once
+cd terraform && terraform init
+```
+
+Without **`TF_WORKSPACE`**, `terraform init` may prompt you to pick one workspace among those matching the tag.
 
 ## GitHub Actions
 
@@ -56,6 +70,8 @@ Workflow [`.github/workflows/port-integration-aws-tf.yml`](.github/workflows/por
 | **PR / push to `main`** (paths `terraform/**` or this workflow) | `terraform fmt -check` |
 | **`workflow_dispatch`** | `plan` / `apply` / `destroy` with Terraform Cloud workspace name |
 
+On dispatch, [**`ensure-tfc-workspace`**](.github/actions/ensure-tfc-workspace/action.yml) runs first (for **plan**/**apply**, creates the workspace when missing; **destroy** requires an existing workspace). Applies tag **`port-integration-aws`**, **local** execution mode.
+
 **Secrets**
 
 | Secret | Purpose |
@@ -63,14 +79,16 @@ Workflow [`.github/workflows/port-integration-aws-tf.yml`](.github/workflows/por
 | `TF_API_TOKEN` | Terraform Cloud API token |
 | `PORT_CLIENT_ID` | `TF_VAR_port_client_id` |
 | `PORT_CLIENT_SECRET` | `TF_VAR_port_client_secret` |
-| `PORT_LIVE_EVENTS_API_KEY` | Optional until phase 2; maps to `TF_VAR_live_events_api_key` if you add it to the workflow `env` |
+| `PORT_LIVE_EVENTS_API_KEY` | Phase 2 only: create secret and add `TF_VAR_live_events_api_key` to the workflow job `env` (not wired in repo until then) |
 
-The job sets **`TF_WORKSPACE`** (not `TF_WORKSPACE_NAME`) so the CLI selects the correct Terraform Cloud workspace.
+The **`terraform` job** sets **`TF_WORKSPACE`** from the `tf_workspace` input so the CLI selects one workspace among those tagged **`port-integration-aws`**. The **`aws_region`** workflow input must match **`aws_region`** in [`terraform.tfvars`](terraform/terraform.tfvars): it configures the OIDC AWS session; Terraform still reads **`var.aws_region`** from tfvars for the provider.
 
 ## Run locally
 
 ```bash
 cd terraform
+export AWS_DEFAULT_REGION=us-east-2   # same value as aws_region in terraform.tfvars
+export TF_WORKSPACE=<your-tfc-workspace-name>   # optional but avoids init prompts
 export TF_VAR_port_client_id="..."
 export TF_VAR_port_client_secret="..."
 terraform login    # if using Terraform Cloud
