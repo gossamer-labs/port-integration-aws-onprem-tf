@@ -23,7 +23,7 @@ on:
           - destroy
         default: plan
       tf_workspace:
-        description: Terraform Cloud workspace name (tagged with port-integration-aws)
+        description: Terraform Cloud workspace name (tagged with port-integration-aws-tf)
         required: true
         type: string
       aws_region:
@@ -67,7 +67,7 @@ jobs:
     concurrency:
       group: port-integration-aws-tf-${{ github.event.inputs.tf_workspace }}
       cancel-in-progress: false
-    # TF_WORKSPACE selects one Terraform Cloud workspace when multiple match tag port-integration-aws.
+    # TF_WORKSPACE selects one Terraform Cloud workspace when multiple match tag port-integration-aws-tf.
     # Phase 2 live events: add TF_VAR_live_events_api_key: ${{ secrets.PORT_LIVE_EVENTS_API_KEY }} when ready.
     env:
       TF_WORKSPACE: ${{ github.event.inputs.tf_workspace }}
@@ -97,7 +97,7 @@ jobs:
           tfc_token: ${{ secrets.TF_API_TOKEN }}
           organization: gossamer-labs
           workspace_name: ${{ github.event.inputs.tf_workspace }}
-          workspace_tags: port-integration-aws
+          workspace_tags: port-integration-aws-tf
           execution_mode: local
           create_if_missing: ${{ github.event.inputs.mode != 'destroy' }}
 

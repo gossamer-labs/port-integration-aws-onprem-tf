@@ -7,14 +7,15 @@ Configuration lives under [`terraform/`](terraform/). The stack **creates a smal
 ## Prerequisites
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) **1.14.5+** (see [`terraform.tf`](terraform/terraform.tf))
-- [HashiCorp Terraform Cloud](https://developer.hashicorp.com/terraform/cloud-docs) access to organization **`gossamer-labs`**, workspace tag **`port-integration-aws`**. Run `terraform login` locally if needed.
+- [HashiCorp Terraform Cloud](https://developer.hashicorp.com/terraform/cloud-docs) access to organization **`gossamer-labs`**, workspace tag **`port-integration-aws-tf`**. Authenticate the CLI with **`terraform login`** or **`export TF_TOKEN_app_terraform_io="..."`** (see [**Secrets**](#secrets-environment-variables-never-commit)).
 - AWS credentials able to create VPC, ECS, IAM, and (when you enable live events) load balancing, API Gateway, EventBridge, etc.
 - **Port region:** this repo defaults to the **US** API host **`https://api.us.port.io`** in [`terraform.tfvars`](terraform/terraform.tfvars). Use **`https://api.port.io`** for EU.
 
 ## AWS authentication
 
 ```bash
-aws sso login   # or your org’s auth flow
+export AWS_PROFILE="my-sso-profile"   # replace with your profile name (quote if it contains spaces)
+aws sso login --profile "$AWS_PROFILE"   # or your org’s auth flow
 ```
 
 ## Secrets — environment variables (never commit)
@@ -26,13 +27,19 @@ export TF_VAR_port_client_secret="<Port client secret>"
 # export TF_VAR_live_events_api_key="$(openssl rand -hex 32)"
 ```
 
+**Terraform Cloud (local CLI)** — optional alternative to interactive `terraform login`. Use a user token from Terraform Cloud **Settings → Tokens** (new or existing). Same value as pasting at the `terraform login` prompt:
+
+```bash
+export TF_TOKEN_app_terraform_io="your-token-here"
+```
+
 Phase 1 does **not** require `TF_VAR_live_events_api_key`. Add it when you set `allow_incoming_requests = true`.
 
 ## Configuration layout
 
 | File | Purpose |
 |------|---------|
-| [`terraform.tf`](terraform/terraform.tf) | Terraform version, **Terraform Cloud** org `gossamer-labs`, workspace tag **`port-integration-aws`**, AWS provider constraints |
+| [`terraform.tf`](terraform/terraform.tf) | Terraform version, **Terraform Cloud** org `gossamer-labs`, workspace tag **`port-integration-aws-tf`**, AWS provider constraints |
 | [`providers.tf`](terraform/providers.tf) | AWS provider; **`default_tags`** (`Environment`, `ManagedBy`, `Project`, `Repository`) |
 | [`variables_network.tf`](terraform/variables_network.tf) | VPC / subnets (`network_*`), `aws_region` |
 | [`variables_integration.tf`](terraform/variables_integration.tf) | Port Ocean module inputs (`port_*`, integration, ECS) |
@@ -49,13 +56,17 @@ Phase 1 does **not** require `TF_VAR_live_events_api_key`. Add it when you set `
 
 ## Remote state (Terraform Cloud)
 
-Organization **`gossamer-labs`**. Workspaces that carry tag **`port-integration-aws`** are eligible for this configuration ([`terraform.tf`](terraform/terraform.tf) `cloud.workspaces.tags`).
+Organization **`gossamer-labs`**. Workspaces that carry tag **`port-integration-aws-tf`** are eligible for this configuration ([`terraform.tf`](terraform/terraform.tf) `cloud.workspaces.tags`).
 
-**Selecting a workspace (non-interactive):** set **`TF_WORKSPACE`** to the workspace **name** (same string as GitHub Actions `workflow_dispatch` → **`tf_workspace`**). Example:
+**Selecting a workspace (non-interactive):** set **`TF_WORKSPACE`** to the workspace **name** (same string as GitHub Actions `workflow_dispatch` → **`tf_workspace`**).
+
+**Terraform Cloud API token:** run **`terraform login`** once, or set **`TF_TOKEN_app_terraform_io`** (see [**Secrets**](#secrets-environment-variables-never-commit)) — equivalent to storing the token from the login flow.
+
+Example:
 
 ```bash
 export TF_WORKSPACE=my-team-port-aws
-terraform login   # once
+export TF_TOKEN_app_terraform_io="your-token-here"   # or run `terraform login` instead
 cd terraform && terraform init
 ```
 
@@ -70,7 +81,7 @@ Workflow [`.github/workflows/port-integration-aws-tf.yml`](.github/workflows/por
 | **PR / push to `main`** (paths `terraform/**` or this workflow) | `terraform fmt -check` |
 | **`workflow_dispatch`** | `plan` / `apply` / `destroy` with Terraform Cloud workspace name |
 
-On dispatch, [**`ensure-tfc-workspace`**](.github/actions/ensure-tfc-workspace/action.yml) runs first (for **plan**/**apply**, creates the workspace when missing; **destroy** requires an existing workspace). Applies tag **`port-integration-aws`**, **local** execution mode.
+On dispatch, [**`ensure-tfc-workspace`**](.github/actions/ensure-tfc-workspace/action.yml) runs first (for **plan**/**apply**, creates the workspace when missing; **destroy** requires an existing workspace). Applies tag **`port-integration-aws-tf`**, **local** execution mode.
 
 **Secrets**
 
@@ -81,20 +92,23 @@ On dispatch, [**`ensure-tfc-workspace`**](.github/actions/ensure-tfc-workspace/a
 | `PORT_CLIENT_SECRET` | `TF_VAR_port_client_secret` |
 | `PORT_LIVE_EVENTS_API_KEY` | Phase 2 only: create secret and add `TF_VAR_live_events_api_key` to the workflow job `env` (not wired in repo until then) |
 
-The **`terraform` job** sets **`TF_WORKSPACE`** from the `tf_workspace` input so the CLI selects one workspace among those tagged **`port-integration-aws`**. The **`aws_region`** workflow input must match **`aws_region`** in [`terraform.tfvars`](terraform/terraform.tfvars): it configures the OIDC AWS session; Terraform still reads **`var.aws_region`** from tfvars for the provider.
+The **`terraform` job** sets **`TF_WORKSPACE`** from the `tf_workspace` input so the CLI selects one workspace among those tagged **`port-integration-aws-tf`**. The **`aws_region`** workflow input must match **`aws_region`** in [`terraform.tfvars`](terraform/terraform.tfvars): it configures the OIDC AWS session; Terraform still reads **`var.aws_region`** from tfvars for the provider.
 
 ## Run locally
 
-Authenticate to AWS first so the Terraform AWS provider can reach your account (for example **`aws sso login`** if your profile uses IAM Identity Center; otherwise use the flow from [**AWS authentication**](#aws-authentication) above).
+Authenticate to AWS first so the Terraform AWS provider can reach your account (for example **`export AWS_PROFILE="my-sso-profile"`** then **`aws sso login --profile "$AWS_PROFILE"`** if you use IAM Identity Center — replace **`my-sso-profile`** with your profile; otherwise use [**AWS authentication**](#aws-authentication) above). Leave **`AWS_PROFILE`** exported so Terraform uses the same credentials.
+
+For **Terraform Cloud** remote state, authenticate with **`export TF_TOKEN_app_terraform_io="..."`** or **`terraform login`** before **`terraform init`** (see [**Secrets**](#secrets-environment-variables-never-commit)).
 
 ```bash
-aws sso login   # or your org’s AWS credential flow
+export AWS_PROFILE="my-sso-profile"   # replace with your profile name (quote if it contains spaces)
+aws sso login --profile "$AWS_PROFILE"   # or your org’s AWS credential flow
 cd terraform
 export AWS_DEFAULT_REGION=us-east-2   # same value as aws_region in terraform.tfvars
 export TF_WORKSPACE=<your-tfc-workspace-name>   # optional but avoids init prompts
 export TF_VAR_port_client_id="..."
 export TF_VAR_port_client_secret="..."
-terraform login    # if using Terraform Cloud
+export TF_TOKEN_app_terraform_io="your-token-here"   # optional; or run `terraform login` instead
 terraform init
 terraform plan
 terraform apply
@@ -103,7 +117,7 @@ terraform apply
 ## First-time checklist
 
 - **AWS:** Ensure credentials target **`us-east-2`** (matches [`terraform.tfvars`](terraform/terraform.tfvars)) before `terraform plan` / `apply`.
-- **Secrets:** Export `TF_VAR_port_client_id` and `TF_VAR_port_client_secret` locally; add `TF_API_TOKEN`, `PORT_CLIENT_ID`, and `PORT_CLIENT_SECRET` to the GitHub repo before running the workflow.
+- **Secrets:** Export `TF_VAR_port_client_id` and `TF_VAR_port_client_secret` locally; add `TF_API_TOKEN`, `PORT_CLIENT_ID`, and `PORT_CLIENT_SECRET` to the GitHub repo before running the workflow. For local Terraform Cloud auth, use **`terraform login`** or **`TF_TOKEN_app_terraform_io`** (see [**Secrets**](#secrets-environment-variables-never-commit)).
 - **Port:** Confirm **`port_base_url`** matches your Port region (US `api.us.port.io` vs EU `api.port.io`).
 - **Network:** If CIDR **`10.48.0.0/16`** overlaps another VPC or peered network, change `network_vpc_cidr` and `network_public_subnet_cidrs` together.
 - **ECS networking:** **`assign_public_ip = true`** matches **public subnets + no NAT** (default bundle). For private subnets + NAT, set `network_private_subnet_cidrs`, `network_enable_nat_gateway = true`, and `assign_public_ip = false`.
