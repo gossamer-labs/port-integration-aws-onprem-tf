@@ -2,89 +2,89 @@
 
 Port Integration with AWS. Terraform. Real time.
 
-The following sections describe how to configure and run the Terraform in the `terraform/` directory of this repository.
+Configuration lives under [`terraform/`](terraform/). The stack **creates a small VPC** by default (see [`network.tf`](terraform/network.tf), [`variables_network.tf`](terraform/variables_network.tf)) so you can deploy without hand-picking subnet IDs. To attach to an **existing** VPC later, set `network_use_existing_vpc = true` and fill `network_existing_vpc_id` / `network_existing_subnet_ids`.
 
 ## Prerequisites
 
-- [Terraform](https://developer.hashicorp.com/terraform/downloads) **1.14.5+** installed (matches other stacks under `port-getting-started/terraform/`)
-- A [HashiCorp Cloud Platform](https://developer.hashicorp.com/terraform/cloud-docs) account with access to the **`gossamer-labs`** organization, and a workspace tagged **`port-integration-aws`** (same pattern as `eks-network`, `eks-cluster`, etc.). Run `terraform login` if you have not already.
-- AWS credentials for the account where resources run, with permissions to create the resources this module defines (ECS, load balancing, IAM roles, EventBridge, API Gateway, CloudWatch, and related read access for the integration). The `aws` CLI is optional but useful.
-- In `terraform/terraform.tfvars`, set **`aws_region`** to the same region as your VPC and subnets. The placeholder VPC and subnet IDs must be replaced with real values; the load balancer needs **at least two subnets in different Availability Zones** in that VPC (typical for an internet-facing ALB).
+- [Terraform](https://developer.hashicorp.com/terraform/downloads) **1.14.5+** (see [`terraform.tf`](terraform/terraform.tf))
+- [HashiCorp Terraform Cloud](https://developer.hashicorp.com/terraform/cloud-docs) access to organization **`gossamer-labs`**, workspace tag **`port-integration-aws`**. Run `terraform login` locally if needed.
+- AWS credentials able to create VPC, ECS, IAM, and (when you enable live events) load balancing, API Gateway, EventBridge, etc.
+- **Port region:** this repo defaults to the **US** API host **`https://api.us.port.io`** in [`terraform.tfvars`](terraform/terraform.tfvars). Use **`https://api.port.io`** for EU.
 
 ## AWS authentication
 
-If your organization uses IAM Identity Center (SSO):
-
 ```bash
-aws sso login
+aws sso login   # or your org’s auth flow
 ```
 
-Use whatever AWS authentication flow your team expects before `terraform apply`.
-
-## Secrets — use environment variables (never commit)
-
-Do **not** store Port credentials or the live events API key in `terraform/terraform.tfvars`, `.tf` files, or any tracked file. Terraform reads variables whose names start with `TF_VAR_`:
+## Secrets — environment variables (never commit)
 
 ```bash
-export TF_VAR_port_client_id="<your Port client id>"
-export TF_VAR_port_client_secret="<your Port client secret>"
-export TF_VAR_live_events_api_key="<your live events API key>"
+export TF_VAR_port_client_id="<Port client id>"
+export TF_VAR_port_client_secret="<Port client secret>"
+# Optional until live events (phase 2):
+# export TF_VAR_live_events_api_key="$(openssl rand -hex 32)"
 ```
 
-Use the same three variables in CI/CD: define them as protected secrets in your pipeline, or inject them from a secrets manager, then run `terraform plan` / `terraform apply` in that environment.
+Phase 1 does **not** require `TF_VAR_live_events_api_key`. Add it when you set `allow_incoming_requests = true`.
+
+## Configuration layout
+
+| File | Purpose |
+|------|---------|
+| [`variables_network.tf`](terraform/variables_network.tf) | VPC / subnets (`network_*`), `aws_region` |
+| [`variables_integration.tf`](terraform/variables_integration.tf) | Port Ocean module (`port_*`, integration, ECS) |
+| [`network.tf`](terraform/network.tf) | Optional `terraform-aws-modules/vpc` (**v5.x** — compatible with the Port module’s AWS provider `~> 5.x`) |
+| [`main.tf`](terraform/main.tf) | `module "aws"` — Port [`aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) |
+| [`terraform.tfvars`](terraform/terraform.tfvars) | Non-secret defaults (`integration_identifier` is set for this stack) |
+
+## Phase 1 vs phase 2
+
+- **Phase 1 (default in `terraform.tfvars`):** `allow_incoming_requests = false` — scheduled **POLLING** sync only; **no** ALB, API Gateway, or EventBridge. Good for first validation.
+- **Phase 2 (live events):** set `allow_incoming_requests = true`, generate `TF_VAR_live_events_api_key`, apply again. Per [Port docs](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/live-events), live events are **single-account only**. Multi-account needs separate planning.
+
+## Remote state (Terraform Cloud)
+
+Organization **`gossamer-labs`**, workspaces tagged **`port-integration-aws`**. Create or select a workspace, then run `terraform init` and choose it when prompted.
 
 ## GitHub Actions
 
-Workflow [`.github/workflows/port-integration-aws-tf.yml`](.github/workflows/port-integration-aws-tf.yml) mirrors the pattern used in `port-getting-started` (Terraform Cloud token, OIDC to AWS, composite **`ensure-tfc-workspace`** helper):
+Workflow [`.github/workflows/port-integration-aws-tf.yml`](.github/workflows/port-integration-aws-tf.yml):
 
 | Trigger | Behavior |
 |--------|----------|
-| **Pull request / push to `main`** (changes under `terraform/` or to `port-integration-aws-tf.yml`) | `terraform fmt -check` only |
-| **`workflow_dispatch`** | Choose **plan**, **apply**, or **destroy**, plus Terraform Cloud **workspace name**, **AWS region**, and optional **IAM role ARN** (defaults to the same OIDC role as the EKS workflows). |
+| **PR / push to `main`** (paths `terraform/**` or this workflow) | `terraform fmt -check` |
+| **`workflow_dispatch`** | `plan` / `apply` / `destroy` with Terraform Cloud workspace name |
 
-**Repository secrets** (same naming as the Port/EKS flows where possible):
+**Secrets**
 
 | Secret | Purpose |
 |--------|---------|
-| `TF_API_TOKEN` | [Terraform Cloud API token](https://developer.hashicorp.com/terraform/cloud-docs/users-teams-organizations/api-tokens) for `gossamer-labs` |
-| `PORT_CLIENT_ID` | Maps to `TF_VAR_port_client_id` |
-| `PORT_CLIENT_SECRET` | Maps to `TF_VAR_port_client_secret` |
-| `PORT_LIVE_EVENTS_API_KEY` | Maps to `TF_VAR_live_events_api_key` |
+| `TF_API_TOKEN` | Terraform Cloud API token |
+| `PORT_CLIENT_ID` | `TF_VAR_port_client_id` |
+| `PORT_CLIENT_SECRET` | `TF_VAR_port_client_secret` |
+| `PORT_LIVE_EVENTS_API_KEY` | Optional until phase 2; maps to `TF_VAR_live_events_api_key` if you add it to the workflow `env` |
 
-The dispatch job sets **`TF_WORKSPACE_NAME`** from the workflow input so Terraform selects the correct Terraform Cloud workspace for your tagged configuration.
-
-## Non-secret configuration (committed)
-
-`terraform/terraform.tfvars` contains **only** non-sensitive values: **AWS region**, subnets, VPC id, cluster name, integration identifier, and feature flags. **Commit** this file when your team’s shared settings change. Replace placeholder subnet and VPC ids with real values for your environment.
-
-## Remote state (HashiCorp Terraform Cloud)
-
-Like other Terraform projects in this org (e.g. `port-getting-started/terraform/network`, `.../cluster`), this stack uses a **`cloud` block** instead of an S3 backend: organization **`gossamer-labs`**, workspace selection by tag **`port-integration-aws`**.
-
-Create a Terraform Cloud workspace in that org and add the tag `port-integration-aws` (or reuse an existing workspace that already has this tag), then from `terraform/` run `terraform init` and pick the workspace when prompted.
+The job sets **`TF_WORKSPACE`** (not `TF_WORKSPACE_NAME`) so the CLI selects the correct Terraform Cloud workspace.
 
 ## Run locally
 
-From the `terraform` directory, after exporting the `TF_VAR_*` variables above:
-
 ```bash
 cd terraform
-terraform login   # once per machine, if needed
+export TF_VAR_port_client_id="..."
+export TF_VAR_port_client_secret="..."
+terraform login    # if using Terraform Cloud
 terraform init
 terraform plan
 terraform apply
 ```
 
-## Variable reference
-
-- All inputs are declared in `terraform/variables.tf` (including **`aws_region`** — must match your VPC/subnets).
-- Sensitive parameters: `port_client_id`, `port_client_secret`, `live_events_api_key` — set with `TF_VAR_*` (or one-off `terraform apply -var='port_client_id=...'` if you must, but avoid putting those in files under version control).
-
 ## First-time checklist
 
-- **Port:** Confirm `TF_VAR_*` values match a valid Port API client in your organization.
-- **AWS layout:** Subnets must belong to `vpc_id` and span **at least two AZs** (ALB requirement). For an internet-facing load balancer (default `is_internal` in the upstream module is false), subnets are usually **public** unless you use an internal LB — align with how your network is built.
-- **`initialize_port_resources`:** When `true` (default in `terraform.tfvars`), the integration can **create default blueprints and mappings in Port**. Use `false` if you only want to wire existing catalog assets.
-- **State:** Remote state lives in **HashiCorp Terraform Cloud** (`gossamer-labs`, workspaces tagged **`port-integration-aws`**), consistent with `port-getting-started/terraform/*`.
-- **Module version:** The root module pins the Port example module to **`~> 0.0.24`** so upgrades stay within the 0.0.x line; bump intentionally when you want newer upstream behavior.
-
+- **AWS:** Ensure credentials target **`us-east-2`** (matches [`terraform.tfvars`](terraform/terraform.tfvars)) before `terraform plan` / `apply`.
+- **Secrets:** Export `TF_VAR_port_client_id` and `TF_VAR_port_client_secret` locally; add `TF_API_TOKEN`, `PORT_CLIENT_ID`, and `PORT_CLIENT_SECRET` to the GitHub repo before running the workflow.
+- **Port:** Confirm **`port_base_url`** matches your Port region (US `api.us.port.io` vs EU `api.port.io`).
+- **Network:** If CIDR **`10.48.0.0/16`** overlaps another VPC or peered network, change `network_vpc_cidr` and `network_public_subnet_cidrs` together.
+- **ECS networking:** **`assign_public_ip = true`** matches **public subnets + no NAT** (default bundle). For private subnets + NAT, set `network_private_subnet_cidrs`, `network_enable_nat_gateway = true`, and `assign_public_ip = false`.
+- **Image tag:** Omit **`integration_version`** in `terraform.tfvars` to use the upstream default (`latest`), or set a concrete tag after you confirm one from the running task / registry for reproducible deploys.
+- Commit [`.terraform.lock.hcl`](terraform/.terraform.lock.hcl); regenerate with `terraform providers lock` when upgrading providers.

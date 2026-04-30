@@ -29,7 +29,7 @@ on:
       aws_region:
         description: AWS region for OIDC (must match terraform.tfvars aws_region)
         required: true
-        default: us-east-1
+        default: us-east-2
         type: string
       aws_role_arn:
         description: IAM role for GitHub OIDC
@@ -67,12 +67,13 @@ jobs:
     concurrency:
       group: port-integration-aws-tf-${{ github.event.inputs.tf_workspace }}
       cancel-in-progress: false
+    # TF_WORKSPACE selects one Terraform Cloud workspace when multiple match tag port-integration-aws.
+    # Phase 2 live events: add TF_VAR_live_events_api_key: ${{ secrets.PORT_LIVE_EVENTS_API_KEY }} when ready.
     env:
-      TF_WORKSPACE_NAME: ${{ github.event.inputs.tf_workspace }}
+      TF_WORKSPACE: ${{ github.event.inputs.tf_workspace }}
       AWS_REGION: ${{ github.event.inputs.aws_region }}
       TF_VAR_port_client_id: ${{ secrets.PORT_CLIENT_ID }}
       TF_VAR_port_client_secret: ${{ secrets.PORT_CLIENT_SECRET }}
-      TF_VAR_live_events_api_key: ${{ secrets.PORT_LIVE_EVENTS_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

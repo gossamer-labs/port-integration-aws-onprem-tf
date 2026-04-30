@@ -13,10 +13,12 @@ module "aws" {
 
   integration = {
     identifier = var.integration_identifier
-    config = {
+    config = var.live_events_api_key != null ? {
       live_events_api_key = var.live_events_api_key
-    }
+    } : {}
   }
+
+  integration_version = coalesce(var.integration_version, "latest")
 
   event_listener = {
     type = var.event_listener_type
@@ -24,7 +26,9 @@ module "aws" {
 
   allow_incoming_requests = var.allow_incoming_requests
   create_default_sg       = var.create_default_sg
-  subnets                 = var.subnets
-  vpc_id                  = var.vpc_id
-  cluster_name            = var.cluster_name
+  assign_public_ip        = var.assign_public_ip
+
+  subnets      = local.subnets_for_port
+  vpc_id       = local.vpc_id_for_port
+  cluster_name = var.cluster_name
 }
