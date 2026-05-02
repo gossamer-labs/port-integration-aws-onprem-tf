@@ -25,10 +25,11 @@ integration_identifier = "aws-tf-live-gossamer-int"
 initialize_port_resources = true
 scheduled_resync_interval = 1440
 
+# Per Port docs: POLLING governs scheduled Port sync; AWS live events use EventBridge → API Gateway separately.
 event_listener_type = "POLLING"
 
-# Phase 1: POLLING sync only. Phase 2: set true + set live_events_api_key (TF_VAR).
-allow_incoming_requests = false
+# Live events (ALB + API Gateway + EventBridge). Port documents this as single-account only.
+allow_incoming_requests = true
 
 create_default_sg = true
 assign_public_ip  = true
@@ -36,4 +37,4 @@ assign_public_ip  = true
 cluster_name = "port-ocean-aws-exporter"
 # integration_version: omit for "latest", or set a concrete image tag from ghcr.io/port-labs for reproducible deploys.
 
-# Secrets (Port client id/secret, optional live events key) via TF_VAR_* — see README.
+# Provide live_events_api_key via TF_VAR_live_events_api_key (e.g. openssl rand -hex 32). See README.

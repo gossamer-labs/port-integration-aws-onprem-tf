@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------
 # Port Ocean (`module.aws` — port-labs/integration-factory aws_container_app)
-# Secrets: TF_VAR_port_client_id, TF_VAR_port_client_secret (see README).
+# Secrets: TF_VAR_port_client_id, TF_VAR_port_client_secret, TF_VAR_live_events_api_key (see README).
 # -----------------------------------------------------------------------------
 
 variable "port_client_id" {
@@ -38,7 +38,7 @@ variable "integration_identifier" {
 }
 
 variable "live_events_api_key" {
-  description = "Optional: secret you define for EventBridge→integration webhook (phase 2 / allow_incoming_requests). Not an AWS key."
+  description = "Secret you define for EventBridge→integration webhook validation (not an AWS key). Pass via TF_VAR_live_events_api_key."
   type        = string
   sensitive   = true
   default     = null
@@ -52,7 +52,7 @@ variable "event_listener_type" {
 }
 
 variable "allow_incoming_requests" {
-  description = "If true, creates ALB + API Gateway + EventBridge for live events (phase 2). Phase 1: use false."
+  description = "If true, creates ALB + API Gateway + EventBridge for live events (single-account installations per Port)."
   type        = bool
   default     = false
 }
