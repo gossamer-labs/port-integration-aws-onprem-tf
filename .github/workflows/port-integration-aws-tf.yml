@@ -68,14 +68,14 @@ jobs:
       id-token: write
       contents: read
     concurrency:
-      group: port-integration-aws-tf-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace || vars.TFC_WORKSPACE }}
+      group: port-integration-aws-tf-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace || vars.TFC_WORKSPACE || 'port-integration-aws-tf' }}
       cancel-in-progress: false
     # TF_WORKSPACE selects one Terraform Cloud workspace when multiple match tag port-integration-aws-tf.
-    # PR / push to main: set repository Variables TFC_WORKSPACE (and optional AWS_REGION, AWS_ROLE_ARN).
+    # PR / push to main: optional repository Variables TFC_WORKSPACE, AWS_REGION, AWS_ROLE_ARN (defaults in env below).
     # Phase 2 live events: add TF_VAR_live_events_api_key: ${{ secrets.PORT_LIVE_EVENTS_API_KEY }} when ready.
     env:
       TF_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || (github.event_name == 'pull_request' && 'plan' || github.event_name == 'push' && 'apply') }}
-      TF_WORKSPACE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace || vars.TFC_WORKSPACE }}
+      TF_WORKSPACE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace || vars.TFC_WORKSPACE || 'port-integration-aws-tf' }}
       AWS_REGION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_region || vars.AWS_REGION || 'us-east-2' }}
       TF_AWS_ROLE_ARN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_role_arn || vars.AWS_ROLE_ARN || 'arn:aws:iam::936835732720:role/github-actions-deploy' }}
       TF_VAR_port_client_id: ${{ secrets.PORT_CLIENT_ID }}

@@ -88,7 +88,7 @@ On every **`terraform`** run, [**`ensure-tfc-workspace`**](.github/actions/ensur
 
 | Variable | Purpose |
 |----------|---------|
-| **`TFC_WORKSPACE`** | Terraform Cloud **workspace name** (must match a workspace tagged **`port-integration-aws-tf`**). **Required** for pull requests and pushes to **`main`**. |
+| **`TFC_WORKSPACE`** | Terraform Cloud **workspace name** (must match a workspace tagged **`port-integration-aws-tf`**). Optional for PR / **`main`**; workflow defaults to **`port-integration-aws-tf`** if unset. |
 | **`AWS_REGION`** | AWS region for OIDC (optional; defaults to **`us-east-2`** in the workflow). Must match **`aws_region`** in [`terraform.tfvars`](terraform/terraform.tfvars). |
 | **`AWS_ROLE_ARN`** | IAM role for GitHub OIDC (optional; defaults to **`arn:aws:iam::936835732720:role/github-actions-deploy`**). |
 
@@ -101,7 +101,7 @@ On every **`terraform`** run, [**`ensure-tfc-workspace`**](.github/actions/ensur
 | `PORT_CLIENT_SECRET` | `TF_VAR_port_client_secret` |
 | `PORT_LIVE_EVENTS_API_KEY` | Phase 2 only: create secret and add `TF_VAR_live_events_api_key` to the **`terraform` job `env`** (not wired in repo until then) |
 
-**Dispatch** supplies **`TF_WORKSPACE`** via **`tf_workspace`**. **PR / `main`** use **`vars.TFC_WORKSPACE`** (and optional **`vars.AWS_REGION`** / **`vars.AWS_ROLE_ARN`**). In all cases, the OIDC region should match **`aws_region`** in [`terraform.tfvars`](terraform/terraform.tfvars); Terraform still reads **`var.aws_region`** from tfvars for the provider.
+**Dispatch** supplies **`TF_WORKSPACE`** via **`tf_workspace`**. **PR / `main`** use **`vars.TFC_WORKSPACE`** when set (optional **`vars.AWS_REGION`** / **`vars.AWS_ROLE_ARN`**); workspace name falls back to **`port-integration-aws-tf`** to match workflow **`env.TF_WORKSPACE`** defaults. The OIDC region should match **`aws_region`** in [`terraform.tfvars`](terraform/terraform.tfvars); Terraform still reads **`var.aws_region`** from tfvars for the provider.
 
 **Apply on `main`:** any **push** to **`main`** that matches the path filter runs **apply** (including direct pushes, not only merges). Restrict merges via branch protection if needed.
 
@@ -128,7 +128,7 @@ terraform apply
 ## First-time checklist
 
 - **AWS:** Ensure credentials target **`us-east-2`** (matches [`terraform.tfvars`](terraform/terraform.tfvars)) before `terraform plan` / `apply`.
-- **Secrets / CI:** Export `TF_VAR_port_client_id` and `TF_VAR_port_client_secret` locally; add `TF_API_TOKEN`, `PORT_CLIENT_ID`, and `PORT_CLIENT_SECRET` to the GitHub repo. Set repository **Variable** **`TFC_WORKSPACE`** (and optional **`AWS_REGION`** / **`AWS_ROLE_ARN`**) for **PR plan** and **`main` apply**. For local Terraform Cloud auth, use **`terraform login`** or **`TF_TOKEN_app_terraform_io`** (see [**Secrets**](#secrets-environment-variables-never-commit)).
+- **Secrets / CI:** Export `TF_VAR_port_client_id` and `TF_VAR_port_client_secret` locally; add `TF_API_TOKEN`, `PORT_CLIENT_ID`, and `PORT_CLIENT_SECRET` to the GitHub repo. Optionally set repository **Variable** **`TFC_WORKSPACE`** (and **`AWS_REGION`** / **`AWS_ROLE_ARN`**) for **PR plan** and **`main` apply** — defaults match the workflow if omitted. For local Terraform Cloud auth, use **`terraform login`** or **`TF_TOKEN_app_terraform_io`** (see [**Secrets**](#secrets-environment-variables-never-commit)).
 - **Port:** Confirm **`port_base_url`** matches your Port region (US `api.us.port.io` vs EU `api.port.io`).
 - **Network:** If CIDR **`10.48.0.0/16`** overlaps another VPC or peered network, change `network_vpc_cidr` and `network_public_subnet_cidrs` together.
 - **ECS networking:** **`assign_public_ip = true`** matches **public subnets + no NAT** (default bundle). For private subnets + NAT, set `network_private_subnet_cidrs`, `network_enable_nat_gateway = true`, and `assign_public_ip = false`.
