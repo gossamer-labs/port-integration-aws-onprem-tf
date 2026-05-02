@@ -92,7 +92,7 @@ On every **`terraform`** run, [**`ensure-tfc-workspace`**](.github/actions/ensur
 | **`AWS_REGION`** | AWS region for OIDC (optional; defaults to **`us-east-2`** in the workflow). Must match **`aws_region`** in [`terraform.tfvars`](terraform/terraform.tfvars). |
 | **`AWS_ROLE_ARN`** | IAM role for GitHub OIDC (optional; defaults to **`arn:aws:iam::936835732720:role/github-actions-deploy`**). |
 
-**Secrets**
+**Repository secrets** (Settings → Secrets and variables → Actions → **Secrets** — use **Secrets**, not **Variables**; required for the **`terraform`** job)
 
 | Secret | Purpose |
 |--------|---------|
@@ -128,7 +128,7 @@ terraform apply
 ## First-time checklist
 
 - **AWS:** Ensure credentials target **`us-east-2`** (matches [`terraform.tfvars`](terraform/terraform.tfvars)) before `terraform plan` / `apply`.
-- **Secrets / CI:** Export `TF_VAR_port_client_id` and `TF_VAR_port_client_secret` locally; add `TF_API_TOKEN`, `PORT_CLIENT_ID`, and `PORT_CLIENT_SECRET` to the GitHub repo. Optionally set repository **Variable** **`TFC_WORKSPACE`** (and **`AWS_REGION`** / **`AWS_ROLE_ARN`**) for **PR plan** and **`main` apply** — defaults match the workflow if omitted. For local Terraform Cloud auth, use **`terraform login`** or **`TF_TOKEN_app_terraform_io`** (see [**Secrets**](#secrets-environment-variables-never-commit)).
+- **Secrets / CI:** Export `TF_VAR_port_client_id` and `TF_VAR_port_client_secret` locally; add **`TF_API_TOKEN`**, **`PORT_CLIENT_ID`**, and **`PORT_CLIENT_SECRET`** as **repository secrets** (Settings → Secrets and variables → Actions → **Secrets**). Optionally set repository **Variables** **`TFC_WORKSPACE`** (and **`AWS_REGION`** / **`AWS_ROLE_ARN`**) for **PR plan** and **`main` apply** — defaults match the workflow if omitted. For local Terraform Cloud auth, use **`terraform login`** or **`TF_TOKEN_app_terraform_io`** (see [**Secrets**](#secrets-environment-variables-never-commit)).
 - **Port:** Confirm **`port_base_url`** matches your Port region (US `api.us.port.io` vs EU `api.port.io`).
 - **Network:** If CIDR **`10.48.0.0/16`** overlaps another VPC or peered network, change `network_vpc_cidr` and `network_public_subnet_cidrs` together.
 - **ECS networking:** **`assign_public_ip = true`** matches **public subnets + no NAT** (default bundle). For private subnets + NAT, set `network_private_subnet_cidrs`, `network_enable_nat_gateway = true`, and `assign_public_ip = false`.
