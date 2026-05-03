@@ -6,7 +6,7 @@ provider "aws" {
       Environment = "integration"
       ManagedBy   = "terraform"
       Project     = "port-ocean-aws"
-      Repository  = "port-integration-aws-tf"
+      Repository  = "port-integration-aws-on-prem-tf-live"
     }
   }
 }

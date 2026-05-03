@@ -20,7 +20,7 @@ network_enable_nat_gateway   = false
 
 port_base_url = "https://api.us.port.io"
 
-# Integration identifier defaults to aws-on-prem-live-<organization> when unset (see variables_integration.tf).
+# Integration identifier defaults to aws-on-prem-tf-live-<organization> when unset (see variables_integration.tf).
 organization = "gossamer-labs"
 
 initialize_port_resources = true

@@ -1,16 +1,16 @@
-name: port-integration-aws-tf
+name: port-integration-aws-on-prem-tf-live
 
 on:
   pull_request:
     paths:
       - "terraform/**"
-      - ".github/workflows/port-integration-aws-tf.yml"
+      - ".github/workflows/port-integration-aws-on-prem-tf-live.yml"
   push:
     branches:
       - main
     paths:
       - "terraform/**"
-      - ".github/workflows/port-integration-aws-tf.yml"
+      - ".github/workflows/port-integration-aws-on-prem-tf-live.yml"
   workflow_dispatch:
     inputs:
       mode:
@@ -23,8 +23,9 @@ on:
           - destroy
         default: plan
       tf_workspace:
-        description: Terraform Cloud workspace name (tagged with port-integration-aws-tf)
+        description: Terraform Cloud workspace name (tagged with port-integration-aws-on-prem-tf-live)
         required: true
+        default: port-integration-aws-on-prem-tf-live
         type: string
       aws_region:
         description: AWS region for OIDC (must match terraform.tfvars aws_region)
@@ -73,15 +74,15 @@ jobs:
       id-token: write
       contents: read
     concurrency:
-      group: port-integration-aws-tf-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace || vars.TFC_WORKSPACE || 'port-integration-aws-tf' }}
+      group: port-integration-aws-on-prem-tf-live-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace || vars.TFC_WORKSPACE || 'port-integration-aws-on-prem-tf-live' }}
       cancel-in-progress: false
-    # TF_WORKSPACE selects one Terraform Cloud workspace when multiple match tag port-integration-aws-tf.
+    # TF_WORKSPACE selects one Terraform Cloud workspace when multiple match tag port-integration-aws-on-prem-tf-live.
     # PR / push to main: optional repository Variables TFC_WORKSPACE, AWS_REGION, AWS_ACCOUNT_ID, AWS_ROLE_NAME (defaults in env below).
     # Set repository Variable AWS_USE_STATIC_CREDENTIALS=true to use secrets AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY instead of OIDC.
     # TF_VAR_live_events_api_key comes from repository secret PORT_LIVE_EVENTS_API_KEY.
     env:
       TF_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || (github.event_name == 'pull_request' && 'plan' || github.event_name == 'push' && 'apply') }}
-      TF_WORKSPACE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace || vars.TFC_WORKSPACE || 'port-integration-aws-tf' }}
+      TF_WORKSPACE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace || vars.TFC_WORKSPACE || 'port-integration-aws-on-prem-tf-live' }}
       AWS_REGION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_region || vars.AWS_REGION || 'us-east-2' }}
       AWS_ACCOUNT_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_account_id || vars.AWS_ACCOUNT_ID || '936835732720' }}
       AWS_ROLE_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_role_name || vars.AWS_ROLE_NAME || 'github-actions-deploy' }}
@@ -121,7 +122,7 @@ jobs:
           tfc_token: ${{ secrets.TF_API_TOKEN }}
           organization: gossamer-labs
           workspace_name: ${{ env.TF_WORKSPACE }}
-          workspace_tags: port-integration-aws-tf
+          workspace_tags: port-integration-aws-on-prem-tf-live
           execution_mode: local
           create_if_missing: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.mode != 'destroy' }}
 
