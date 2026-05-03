@@ -11,7 +11,7 @@ variable "cloudtrail_enabled" {
 }
 
 variable "cloudtrail_name_prefix" {
-  description = "Prefix for the trail name and for the managed S3 log bucket name (DNS-compliant segments)."
+  description = "DNS-compliant prefix for the CloudTrail trail and managed S3 log bucket. Trail name: \"{prefix}-port-live-events\". Managed bucket: \"{prefix}-cloudtrail-logs-{aws_account_id}\" (suffix is the deployment AWS account ID for global S3 uniqueness)."
   type        = string
   default     = "port-ocean"
 
