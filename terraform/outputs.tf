@@ -1,5 +1,5 @@
 output "integration_identifier" {
-  description = "Resolved Port integration identifier (explicit var.integration_identifier or aws-on-prem-tf-live-<port_org_slug>)"
+  description = "Resolved Port integration identifier (explicit var.integration_identifier or aws-onprem-tf-<port_org_slug>)"
   value       = local.integration_identifier
 }
 

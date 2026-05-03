@@ -5,7 +5,7 @@ terraform {
     organization = "gossamer-labs"
 
     workspaces {
-      tags = ["port-integration-aws-on-prem-tf-live"]
+      tags = ["port-integration-aws-onprem-tf"]
     }
   }
 

@@ -33,20 +33,36 @@ variable "scheduled_resync_interval" {
 }
 
 variable "port_org_slug" {
-  description = "Short slug for your org; default integration id when integration_identifier is unset: aws-on-prem-tf-live-<port_org_slug>. Longer values lengthen that id and can contribute to IAM resource name length limits in the Ocean module—prefer a short slug."
+  description = <<-EOT
+    Short org slug. When integration_identifier is null, the Port integration id defaults to
+    aws-onprem-tf-<port_org_slug>. The upstream module names IAM roles using
+    ecs-task-execution-role-port-ocean-aws-<that_identifier>; AWS IAM role names are capped at
+    64 characters, which implies len(service_name) <= 40 and, for type aws,
+    len(identifier) <= 25. Prefer a short slug so the default id stays within that budget.
+  EOT
   type        = string
-  default     = "gossamer-labs"
+  default     = "gossint"
 }
 
 variable "integration_identifier" {
-  description = "Stable identifier for this integration in Port (set before first apply; hard to change later). If null, defaults to aws-on-prem-tf-live-<port_org_slug>. If too long with cluster_name, IAM names from the Ocean module may exceed AWS limits—shorten this or port_org_slug."
+  description = <<-EOT
+    Stable identifier for this integration in Port (set before first apply; hard to change later).
+    If null, defaults to aws-onprem-tf-<port_org_slug>. Upstream builds ECS IAM role names from
+    port-ocean-aws-<identifier>; the longest prefix is ecs-task-execution-role- (24 chars), so
+    the combined role name must stay <= 64 (service_name <= 40; for type aws, identifier <= 25).
+    Shorten this or port_org_slug if apply fails on IAM name length. cluster_name does not feed
+    into that IAM role name pattern.
+  EOT
   type        = string
   default     = null
   nullable    = true
 }
 
 variable "live_events_api_key" {
-  description = "Secret you define for EventBridge→integration webhook validation (not an AWS key). Pass via TF_VAR_live_events_api_key."
+  description = <<-EOT
+    Secret you define for EventBridge→integration webhook validation (not an AWS key).
+    Pass via TF_VAR_live_events_api_key.
+  EOT
   type        = string
   sensitive   = true
   default     = null
@@ -60,7 +76,10 @@ variable "event_listener_type" {
 }
 
 variable "allow_incoming_requests" {
-  description = "If true, creates ALB + API Gateway + EventBridge for live events (single-account installations per Port)."
+  description = <<-EOT
+    If true, creates ALB + API Gateway + EventBridge for live events (single-account installations
+    per Port).
+  EOT
   type        = bool
   default     = false
 }
@@ -78,12 +97,19 @@ variable "assign_public_ip" {
 }
 
 variable "cluster_name" {
-  description = "ECS cluster name for the Port Ocean service. The Ocean module uses this with the integration identifier when building some AWS resource names—keep short to avoid IAM name length failures (64-char role name limit)."
+  description = <<-EOT
+    ECS cluster name for the Port Ocean service (AWS ECS cluster resource). Not concatenated into
+    the Ocean module ecs-task-execution-role IAM name—those names come from integration.identifier;
+    keep cluster_name readable for operations.
+  EOT
   type        = string
 }
 
 variable "integration_version" {
-  description = "Port Ocean AWS integration image tag (pin for reproducibility; empty lets upstream default apply)"
+  description = <<-EOT
+    Port Ocean AWS integration image tag (pin for reproducibility; empty lets upstream default
+    apply)
+  EOT
   type        = string
   default     = null
   nullable    = true

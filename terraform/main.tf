@@ -2,8 +2,13 @@
 # Optional VPC and CloudTrail resources live in network.tf and cloudtrail.tf.
 locals {
   # If integration_identifier is null or blank, derive from port_org_slug.
+  # Upstream Ocean ECS builds service_name = "port-ocean-aws-<identifier>" and IAM role
+  # name = "ecs-task-execution-role-<service_name>". AWS IAM role names are max 64 chars, so
+  # len(service_name) <= 40. With integration type "aws", "port-ocean-aws-" is 15 chars, so
+  # keep integration.identifier (this value) <= 25 characters for the default pattern
+  # "aws-onprem-tf-<port_org_slug>".
   integration_identifier = (
-    var.integration_identifier != null && trimspace(var.integration_identifier) != "" ? trimspace(var.integration_identifier) : "aws-on-prem-tf-live-${var.port_org_slug}"
+    var.integration_identifier != null && trimspace(var.integration_identifier) != "" ? trimspace(var.integration_identifier) : "aws-onprem-tf-${var.port_org_slug}"
   )
 }
 

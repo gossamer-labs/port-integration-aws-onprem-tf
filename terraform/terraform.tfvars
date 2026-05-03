@@ -20,8 +20,8 @@ network_enable_nat_gateway   = false
 
 port_base_url = "https://api.us.port.io"
 
-# Integration identifier defaults to aws-on-prem-tf-live-<port_org_slug> when unset (see variables_integration.tf).
-port_org_slug = "gossamer-labs"
+# Integration identifier defaults to aws-onprem-tf-<port_org_slug> when unset (see variables_integration.tf / README IAM section).
+port_org_slug = "gossint"
 
 initialize_port_resources = true
 scheduled_resync_interval = 1440
@@ -35,7 +35,7 @@ allow_incoming_requests = true
 create_default_sg = true
 assign_public_ip  = true
 
-# ECS cluster for the Ocean service; upstream IAM naming combines this with the integration id—keep short (see README).
+# ECS cluster name (operations-facing); IAM role names for Ocean ECS come from integration.identifier, not cluster_name (see README).
 cluster_name = "port-exporter"
 # integration_version: omit for "latest", or set a concrete image tag from ghcr.io/port-labs for reproducible deploys.
 

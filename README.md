@@ -1,4 +1,4 @@
-# port-integration-aws-on-prem-tf-live
+# port-integration-aws-onprem-tf
 
 Port **AWS** integration on **ECS** with **Terraform**, **Terraform Cloud** remote state, and **live events** (EventBridge → API Gateway → integration webhook) in one deployment path.
 
@@ -6,17 +6,26 @@ Configuration lives under [`terraform/`](terraform/). The stack **creates a smal
 
 [`terraform.tfvars`](terraform/terraform.tfvars) enables **`allow_incoming_requests = true`** so Terraform provisions ALB, API Gateway, and EventBridge for live events. Per [Port live events](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/live-events), live events are **single-account only**; multi-account setups need a separate design ([multi-account guide](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/multi_account)).
 
-**Integration identifier:** set **`port_org_slug`** in [`terraform.tfvars`](terraform/terraform.tfvars) (default `gossamer-labs`). The Port integration identifier is **`aws-on-prem-tf-live-<port_org_slug>`** unless you override **`integration_identifier`** explicitly in Terraform.
+**Integration identifier:** set **`port_org_slug`** in [`terraform.tfvars`](terraform/terraform.tfvars) (default **`gossint`**). The Port integration identifier is **`aws-onprem-tf-<port_org_slug>`** unless you override **`integration_identifier`** explicitly in Terraform.
 
 ### IAM role name length (integration naming)
 
-[IAM role names](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html) must be **64 characters or fewer**. The [`aws_container_app`](terraform/main.tf) module from [`port-labs/integration-factory/ocean`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) creates IAM roles whose **names** include a service-style string **derived by that module** from **`cluster_name`** and the Port **`integration.identifier`** (your **`integration_identifier`**, or the default **`aws-on-prem-tf-live-<port_org_slug>`**). If those strings are too long together, **`terraform apply`** can fail with an error such as **`expected length of name to be in the range (1 - 64)`** on **`aws_iam_role`**.
+AWS [IAM role `name` quotas](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html) cap **customer-managed role names at 64 characters**. The [`aws_container_app`](terraform/main.tf) module from [`port-labs/integration-factory/ocean`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) follows [upstream `ecs_service`](https://github.com/port-labs/terraform-ocean-integration-factory/blob/main/modules/aws_helpers/ecs_service/main.tf):
 
-- **Primary lever:** **`port_org_slug`** — longer slugs lengthen the default integration id. Prefer a **short, stable** slug (abbreviation is fine), especially when the company name is long.
-- **Override:** set **`integration_identifier`** explicitly to a shorter stable value when needed (still **choose before first apply** if possible—see [`variables_integration.tf`](terraform/variables_integration.tf)).
-- **Secondary lever:** **`cluster_name`** — stock default **`port-exporter`** in [`terraform.tfvars`](terraform/terraform.tfvars); shorten further only if IAM errors persist after adjusting the integration id.
+- **`service_name`** = `port-ocean-<integration.type>-<integration.identifier>` — this stack uses **`integration.type = aws`** from the module.
+- **`aws_iam_role.task_execution_role.name`** = **`ecs-task-execution-role-`** + **`service_name`**. The literal prefix **`ecs-task-execution-role-`** is **24** characters, so **`len(service_name)` must be ≤ 40** (because **24 + 40 = 64**).
+- With **`integration.type = aws`**, **`service_name`** starts with **`port-ocean-aws-`** (**15** characters). So **`integration.identifier` must be ≤ 25** characters (**15 + 25 = 40**).
 
-If you hit this limit, shorten **`port_org_slug`** / **`integration_identifier`** / **`cluster_name`** and re-run **`terraform plan`** until the proposed IAM resources fit.
+**`cluster_name` does not appear in that IAM role name.** If apply fails on IAM length, shorten **`integration_identifier`** or **`port_org_slug`** (when using the default **`aws-onprem-tf-<port_org_slug>`**), not the ECS cluster name.
+
+**Worked example with repo defaults:** identifier **`aws-onprem-tf-gossint`** → **`service_name`** = **`port-ocean-aws-aws-onprem-tf-gossint`** (**36** chars) → execution role name **`ecs-task-execution-role-port-ocean-aws-aws-onprem-tf-gossint`** (**60** chars, within **64**).
+
+**Levers**
+
+- **`integration_identifier`** — set explicitly when you need a specific stable id (still avoid unnecessary churn after first apply).
+- **`port_org_slug`** — only drives the default id when **`integration_identifier`** is unset.
+
+If **`terraform apply`** fails with **`expected length of name to be in the range (1 - 64)`** on **`aws_iam_role`**, shorten **`integration_identifier`** or **`port_org_slug`** and re-run **`terraform plan`**.
 
 **`event_listener_type = "POLLING"`** matches [Port’s Terraform examples](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/installation): it controls scheduled sync with Port; it is **not** a substitute for live events (those use the ingress path above).
 
@@ -56,7 +65,7 @@ Expect **S3 storage** charges for log files and normal **CloudTrail** pricing be
 ## Prerequisites
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) **1.14.5+** (see [`terraform.tf`](terraform/terraform.tf))
-- [HashiCorp Terraform Cloud](https://developer.hashicorp.com/terraform/cloud-docs) access to organization **`gossamer-labs`**, workspace tag **`port-integration-aws-on-prem-tf-live`**. Authenticate the CLI with **`terraform login`** or **`export TF_TOKEN_app_terraform_io="..."`** (see [**Secrets**](#secrets--environment-variables-never-commit)). **Without Terraform Cloud:** comment out the **`cloud {}`** block in [`terraform.tf`](terraform/terraform.tf), then configure a **`backend`** (commented **`backend "s3"`** example in that file) or use local state—see [**Remote state**](#remote-state-terraform-cloud).
+- [HashiCorp Terraform Cloud](https://developer.hashicorp.com/terraform/cloud-docs) access to organization **`gossamer-labs`**, workspace tag **`port-integration-aws-onprem-tf`**. Authenticate the CLI with **`terraform login`** or **`export TF_TOKEN_app_terraform_io="..."`** (see [**Secrets**](#secrets--environment-variables-never-commit)). **Without Terraform Cloud:** comment out the **`cloud {}`** block in [`terraform.tf`](terraform/terraform.tf), then configure a **`backend`** (commented **`backend "s3"`** example in that file) or use local state—see [**Remote state**](#remote-state-terraform-cloud).
 - AWS credentials able to create VPC, ECS, IAM, load balancing, **API Gateway**, **EventBridge** (rules), **Systems Manager Parameter Store** (integration secrets), **CloudTrail**, **S3** (log bucket), and related resources used by the [Ocean `aws_container_app` module](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app).
 - **Port region:** this repo defaults to the **US** API host **`https://api.us.port.io`** in [`terraform.tfvars`](terraform/terraform.tfvars). Use **`https://api.port.io`** for EU.
 
@@ -89,7 +98,7 @@ Files below cover **network bootstrap**, **CloudTrail**, the **Port Ocean** modu
 
 | File | Purpose |
 |------|---------|
-| [`terraform.tf`](terraform/terraform.tf) | Terraform version, **Terraform Cloud** org `gossamer-labs`, workspace tag **`port-integration-aws-on-prem-tf-live`**, AWS provider constraints |
+| [`terraform.tf`](terraform/terraform.tf) | Terraform version, **Terraform Cloud** org `gossamer-labs`, workspace tag **`port-integration-aws-onprem-tf`**, AWS provider constraints |
 | [`providers.tf`](terraform/providers.tf) | AWS provider; **`default_tags`** (`Environment`, `ManagedBy`, `Project`, `Repository`) |
 | [`variables_network.tf`](terraform/variables_network.tf) | VPC / subnets (`network_*`), `aws_region` |
 | [`variables_cloudtrail.tf`](terraform/variables_cloudtrail.tf) | CloudTrail + log bucket (`cloudtrail_*`), gated with live events |
@@ -102,7 +111,7 @@ Files below cover **network bootstrap**, **CloudTrail**, the **Port Ocean** modu
 
 ## Remote state (Terraform Cloud)
 
-Organization **`gossamer-labs`**. Workspaces that carry tag **`port-integration-aws-on-prem-tf-live`** are eligible for this configuration ([`terraform.tf`](terraform/terraform.tf) `cloud.workspaces.tags`).
+Organization **`gossamer-labs`**. Workspaces that carry tag **`port-integration-aws-onprem-tf`** are eligible for this configuration ([`terraform.tf`](terraform/terraform.tf) `cloud.workspaces.tags`).
 
 ### Without Terraform Cloud
 
@@ -127,7 +136,7 @@ Without **`TF_WORKSPACE`**, `terraform init` may prompt you to pick one workspac
 
 ## GitHub Actions
 
-Workflow [`.github/workflows/port-integration-aws-on-prem-tf-live.yml`](.github/workflows/port-integration-aws-on-prem-tf-live.yml):
+Workflow [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workflows/port-integration-aws-onprem-tf.yml):
 
 | Trigger | Behavior |
 |--------|----------|
@@ -135,7 +144,7 @@ Workflow [`.github/workflows/port-integration-aws-on-prem-tf-live.yml`](.github/
 | **Push to `main`** (same paths) | **`terraform` job:** **`terraform apply`** (runs after merge to trunk). |
 | **`workflow_dispatch`** | **`format`** then **`terraform` job:** choose **plan** / **apply** / **destroy** and supply **`tf_workspace`**, **`aws_region`**, **`aws_account_id`**, **`aws_role_name`** (defaults match repository variables below). |
 
-When repository variable **`USE_TERRAFORM_CLOUD_BACKEND`** is unset or not **`false`**, [**`ensure-tfc-workspace`**](.github/actions/ensure-tfc-workspace/action.yml) runs before **`terraform init`** (for **plan**/**apply**, creates the workspace when missing; **destroy** requires an existing workspace unless you use a non-TFC backend—see variable below). Applies tag **`port-integration-aws-on-prem-tf-live`**, **local** execution mode. Set **`USE_TERRAFORM_CLOUD_BACKEND=false`** after switching [`terraform.tf`](terraform/terraform.tf) to S3/local backend so this step is skipped.
+When repository variable **`USE_TERRAFORM_CLOUD_BACKEND`** is unset or not **`false`**, [**`ensure-tfc-workspace`**](.github/actions/ensure-tfc-workspace/action.yml) runs before **`terraform init`** (for **plan**/**apply**, creates the workspace when missing; **destroy** requires an existing workspace unless you use a non-TFC backend—see variable below). Applies tag **`port-integration-aws-onprem-tf`**, **local** execution mode. Set **`USE_TERRAFORM_CLOUD_BACKEND=false`** after switching [`terraform.tf`](terraform/terraform.tf) to S3/local backend so this step is skipped.
 
 ### GitHub Actions: OIDC vs static AWS credentials
 
@@ -147,7 +156,7 @@ When repository variable **`USE_TERRAFORM_CLOUD_BACKEND`** is unset or not **`fa
 | Variable | Purpose |
 |----------|---------|
 | **`USE_TERRAFORM_CLOUD_BACKEND`** | Set to **`false`** when [`terraform.tf`](terraform/terraform.tf) uses **S3 or local** state instead of **`cloud {}`**. Skips **`ensure-tfc-workspace`** and avoids Terraform Cloud API calls in CI. Omit or use any other value for default Terraform Cloud behavior. |
-| **`TFC_WORKSPACE`** | Terraform Cloud **workspace name** (must match a workspace tagged **`port-integration-aws-on-prem-tf-live`**). Optional for PR / **`main`**; workflow defaults to **`port-integration-aws-on-prem-tf-live`** if unset. |
+| **`TFC_WORKSPACE`** | Terraform Cloud **workspace name** (must match a workspace tagged **`port-integration-aws-onprem-tf`**). Optional for PR / **`main`**; workflow defaults to **`port-integration-aws-onprem-tf`** if unset. |
 | **`AWS_REGION`** | AWS region for AWS credentials (optional; defaults to **`us-east-2`** in the workflow). Must match **`aws_region`** in [`terraform.tfvars`](terraform/terraform.tfvars). |
 | **`AWS_ACCOUNT_ID`** | AWS account ID used to build the OIDC role ARN `arn:aws:iam::<id>:role/<name>` (optional; defaults to **`936835732720`**). |
 | **`AWS_ROLE_NAME`** | IAM role **name** for GitHub OIDC (optional; defaults to **`github-actions-deploy`**). |
@@ -166,7 +175,7 @@ When repository variable **`USE_TERRAFORM_CLOUD_BACKEND`** is unset or not **`fa
 
 If **`PORT_LIVE_EVENTS_API_KEY`** is missing or empty in GitHub Actions, **`TF_VAR_live_events_api_key`** is not set. Terraform then passes **`integration.config` without `live_events_api_key`** (see [`main.tf`](terraform/main.tf)) even though **`allow_incoming_requests = true`** — **`terraform plan` / `apply` may still succeed**, but live-events webhook validation is **not** configured. Always define **`PORT_LIVE_EVENTS_API_KEY`** for CI.
 
-**Dispatch** supplies **`TF_WORKSPACE`** via **`tf_workspace`**. **PR / `main`** use **`vars.TFC_WORKSPACE`** when set (optional **`vars.AWS_REGION`**, **`vars.AWS_ACCOUNT_ID`**, **`vars.AWS_ROLE_NAME`**); workspace name falls back to **`port-integration-aws-on-prem-tf-live`** to match workflow **`env.TF_WORKSPACE`** defaults. The AWS region should match **`aws_region`** in [`terraform.tfvars`](terraform/terraform.tfvars); Terraform still reads **`var.aws_region`** from tfvars for the provider.
+**Dispatch** supplies **`TF_WORKSPACE`** via **`tf_workspace`**. **PR / `main`** use **`vars.TFC_WORKSPACE`** when set (optional **`vars.AWS_REGION`**, **`vars.AWS_ACCOUNT_ID`**, **`vars.AWS_ROLE_NAME`**); workspace name falls back to **`port-integration-aws-onprem-tf`** to match workflow **`env.TF_WORKSPACE`** defaults. The AWS region should match **`aws_region`** in [`terraform.tfvars`](terraform/terraform.tfvars); Terraform still reads **`var.aws_region`** from tfvars for the provider.
 
 **Apply on `main`:** any **push** to **`main`** that matches the path filter runs **apply** (including direct pushes, not only merges). Restrict merges via branch protection if needed.
 
@@ -189,7 +198,7 @@ If **`configure-aws-credentials`** fails with **`Not authorized to perform sts:A
       "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
     },
     "StringLike": {
-      "token.actions.githubusercontent.com:sub": "repo:gossamer-labs/port-integration-aws-on-prem-tf-live:*"
+      "token.actions.githubusercontent.com:sub": "repo:gossamer-labs/port-integration-aws-onprem-tf:*"
     }
   }
 }
@@ -203,7 +212,7 @@ Remove AWS resources created by this Terraform configuration, then clean up Port
 
 ### AWS — `terraform destroy`
 
-1. Run the workflow [`.github/workflows/port-integration-aws-on-prem-tf-live.yml`](.github/workflows/port-integration-aws-on-prem-tf-live.yml) via **`workflow_dispatch`** with **`mode: destroy`**. Use the same **`tf_workspace`**, **`aws_region`**, **`aws_account_id`**, and **`aws_role_name`** inputs you use for apply (defaults match repository variables).
+1. Run the workflow [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workflows/port-integration-aws-onprem-tf.yml) via **`workflow_dispatch`** with **`mode: destroy`**. Use the same **`tf_workspace`**, **`aws_region`**, **`aws_account_id`**, and **`aws_role_name`** inputs you use for apply (defaults match repository variables).
 2. With **Terraform Cloud** remote state, **`ensure-tfc-workspace`** runs unless **`USE_TERRAFORM_CLOUD_BACKEND=false`**; destroy expects the workspace to exist in that path. If you use **S3 or local** state and **`USE_TERRAFORM_CLOUD_BACKEND=false`**, CI skips workspace ensure but still runs **`terraform destroy`** when dispatching destroy—see [Greenfield vs bring-your-own infrastructure](#greenfield-vs-bring-your-own-infrastructure) and [GitHub Actions](#github-actions).
 3. If destroy fails (for example an **S3** bucket is not empty), fix the blocker in AWS and **re-run destroy** until it completes.
 
@@ -250,7 +259,7 @@ After apply, confirm the pipeline end-to-end:
 
 - **AWS:** Ensure credentials target **`us-east-2`** (matches [`terraform.tfvars`](terraform/terraform.tfvars)) before `terraform plan` / `apply`.
 - **AWS / GitHub:** Set repository variables **`AWS_ACCOUNT_ID`** and optionally **`AWS_ROLE_NAME`** to match the IAM role used for OIDC (defaults match this repo’s example). For static credentials, set **`AWS_USE_STATIC_CREDENTIALS=true`** and add **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`** secrets.
-- **Port org slug:** Set **`port_org_slug`** in [`terraform.tfvars`](terraform/terraform.tfvars) if you are not using the default; the Port integration identifier becomes **`aws-on-prem-tf-live-<port_org_slug>`** unless you set **`integration_identifier`** in Terraform. Long slugs can push upstream IAM role **names** over AWS’s **64-character** limit—see [IAM role name length](#iam-role-name-length-integration-naming).
+- **Port org slug:** Set **`port_org_slug`** in [`terraform.tfvars`](terraform/terraform.tfvars) if you are not using the default (**`gossint`**); the Port integration identifier becomes **`aws-onprem-tf-<port_org_slug>`** unless you set **`integration_identifier`** in Terraform. Long slugs can push upstream IAM role **names** over AWS’s **64-character** limit—see [IAM role name length](#iam-role-name-length-integration-naming).
 - **Secrets / CI:** Export **`TF_VAR_port_client_id`**, **`TF_VAR_port_client_secret`**, and **`TF_VAR_live_events_api_key`** locally; add **`TF_API_TOKEN`**, **`PORT_CLIENT_ID`**, **`PORT_CLIENT_SECRET`**, and **`PORT_LIVE_EVENTS_API_KEY`** as **repository secrets** (Settings → Secrets and variables → Actions → **Secrets**). Omitting **`PORT_LIVE_EVENTS_API_KEY`** in CI skips passing **`live_events_api_key`** into Terraform — see GitHub Actions secrets note above. Optionally set repository **Variables** **`TFC_WORKSPACE`** (and **`AWS_REGION`** / **`AWS_ACCOUNT_ID`** / **`AWS_ROLE_NAME`**) for **PR plan** and **`main` apply** — defaults match the workflow if omitted. For local Terraform Cloud auth, use **`terraform login`** or **`TF_TOKEN_app_terraform_io`** (see [**Secrets**](#secrets--environment-variables-never-commit)).
 - **Port:** Confirm **`port_base_url`** matches your Port region (US `api.us.port.io` vs EU `api.port.io`).
 - **Network:** If CIDR **`10.48.0.0/16`** overlaps another VPC or peered network, change `network_vpc_cidr` and `network_public_subnet_cidrs` together.
