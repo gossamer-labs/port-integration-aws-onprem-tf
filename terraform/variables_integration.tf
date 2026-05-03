@@ -32,9 +32,17 @@ variable "scheduled_resync_interval" {
   default     = 1440
 }
 
-variable "integration_identifier" {
-  description = "Stable identifier for this integration in Port (set before first apply; hard to change later)"
+variable "organization" {
+  description = "Short identifier for your organization. Used with integration_identifier when unset: aws-on-prem-live-<organization>."
   type        = string
+  default     = "gossamer-labs"
+}
+
+variable "integration_identifier" {
+  description = "Stable identifier for this integration in Port (set before first apply; hard to change later). If null, defaults to aws-on-prem-live-<organization>."
+  type        = string
+  default     = null
+  nullable    = true
 }
 
 variable "live_events_api_key" {

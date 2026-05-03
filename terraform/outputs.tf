@@ -1,3 +1,21 @@
+output "integration_identifier" {
+  description = "Resolved Port integration identifier (explicit var.integration_identifier or aws-on-prem-live-<organization>)"
+  value       = local.integration_identifier
+}
+
+output "live_events_webhook_url" {
+  description = "HTTPS URL for EventBridge→integration webhook (POST /integration/webhook); null when allow_incoming_requests is false"
+  value = (
+    var.allow_incoming_requests ?
+    format(
+      "https://%s.execute-api.%s.amazonaws.com/production/integration/webhook",
+      module.aws.module.api_gateway[0].aws_api_gateway_rest_api.rest_api.id,
+      var.aws_region
+    ) :
+    null
+  )
+}
+
 output "network_vpc_id" {
   description = "VPC used by the Port Ocean ECS service"
   value       = local.vpc_id_for_port

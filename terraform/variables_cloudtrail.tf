@@ -14,6 +14,23 @@ variable "cloudtrail_name_prefix" {
   description = "Prefix for the trail name and for the managed S3 log bucket name (DNS-compliant segments)."
   type        = string
   default     = "port-ocean"
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9-]{1,34}[a-z0-9]$", var.cloudtrail_name_prefix))
+    error_message = "cloudtrail_name_prefix must be 3-36 lowercase alphanumeric characters or hyphens; cannot start or end with a hyphen."
+  }
+}
+
+variable "cloudtrail_log_bucket_object_expiration_days" {
+  description = "Expire current-version CloudTrail log objects in the managed bucket after this many days (S3 lifecycle)."
+  type        = number
+  default     = 365
+}
+
+variable "cloudtrail_log_bucket_noncurrent_version_expiration_days" {
+  description = "Expire non-current object versions in the managed CloudTrail log bucket after this many days."
+  type        = number
+  default     = 30
 }
 
 variable "cloudtrail_existing_log_bucket_name" {

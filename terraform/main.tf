@@ -1,3 +1,10 @@
+locals {
+  # If integration_identifier is null or blank, derive from organization.
+  integration_identifier = (
+    var.integration_identifier != null && trimspace(var.integration_identifier) != "" ? trimspace(var.integration_identifier) : "aws-on-prem-live-${var.organization}"
+  )
+}
+
 module "aws" {
   source  = "port-labs/integration-factory/ocean//examples/aws_container_app"
   version = "~> 0.0.24"
@@ -12,12 +19,13 @@ module "aws" {
   scheduled_resync_interval = var.scheduled_resync_interval
 
   integration = {
-    identifier = var.integration_identifier
+    identifier = local.integration_identifier
     config = var.live_events_api_key != null ? {
       live_events_api_key = var.live_events_api_key
     } : {}
   }
 
+  # Upstream module defaults integration_version to "latest"; keep explicit default for clarity.
   integration_version = coalesce(var.integration_version, "latest")
 
   event_listener = {

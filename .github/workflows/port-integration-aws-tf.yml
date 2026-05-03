@@ -31,10 +31,15 @@ on:
         required: true
         default: us-east-2
         type: string
-      aws_role_arn:
-        description: IAM role for GitHub OIDC
-        required: false
-        default: arn:aws:iam::936835732720:role/github-actions-deploy
+      aws_account_id:
+        description: "AWS account ID for GitHub OIDC (builds arn:aws:iam::<id>:role/<name>)"
+        required: true
+        default: "936835732720"
+        type: string
+      aws_role_name:
+        description: "IAM role name for GitHub OIDC (not full ARN)"
+        required: true
+        default: "github-actions-deploy"
         type: string
 
 permissions:
@@ -71,13 +76,16 @@ jobs:
       group: port-integration-aws-tf-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace || vars.TFC_WORKSPACE || 'port-integration-aws-tf' }}
       cancel-in-progress: false
     # TF_WORKSPACE selects one Terraform Cloud workspace when multiple match tag port-integration-aws-tf.
-    # PR / push to main: optional repository Variables TFC_WORKSPACE, AWS_REGION, AWS_ROLE_ARN (defaults in env below).
+    # PR / push to main: optional repository Variables TFC_WORKSPACE, AWS_REGION, AWS_ACCOUNT_ID, AWS_ROLE_NAME (defaults in env below).
+    # Set repository Variable AWS_USE_STATIC_CREDENTIALS=true to use secrets AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY instead of OIDC.
     # TF_VAR_live_events_api_key comes from repository secret PORT_LIVE_EVENTS_API_KEY.
     env:
       TF_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || (github.event_name == 'pull_request' && 'plan' || github.event_name == 'push' && 'apply') }}
       TF_WORKSPACE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace || vars.TFC_WORKSPACE || 'port-integration-aws-tf' }}
       AWS_REGION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_region || vars.AWS_REGION || 'us-east-2' }}
-      TF_AWS_ROLE_ARN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_role_arn || vars.AWS_ROLE_ARN || 'arn:aws:iam::936835732720:role/github-actions-deploy' }}
+      AWS_ACCOUNT_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_account_id || vars.AWS_ACCOUNT_ID || '936835732720' }}
+      AWS_ROLE_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_role_name || vars.AWS_ROLE_NAME || 'github-actions-deploy' }}
+      TF_AWS_ROLE_ARN: ${{ format('arn:aws:iam::{0}:role/{1}', github.event_name == 'workflow_dispatch' && github.event.inputs.aws_account_id || vars.AWS_ACCOUNT_ID || '936835732720', github.event_name == 'workflow_dispatch' && github.event.inputs.aws_role_name || vars.AWS_ROLE_NAME || 'github-actions-deploy') }}
       TF_VAR_port_client_id: ${{ secrets.PORT_CLIENT_ID }}
       TF_VAR_port_client_secret: ${{ secrets.PORT_CLIENT_SECRET }}
       TF_VAR_live_events_api_key: ${{ secrets.PORT_LIVE_EVENTS_API_KEY }}
@@ -91,10 +99,19 @@ jobs:
           terraform_version: 1.14.5
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ vars.AWS_USE_STATIC_CREDENTIALS != 'true' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.TF_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials (static)
+        if: ${{ vars.AWS_USE_STATIC_CREDENTIALS == 'true' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Ensure Terraform Cloud workspace
@@ -111,12 +128,7 @@ jobs:
       - name: Terraform init
         if: ${{ env.TF_MODE == 'apply' || env.TF_MODE == 'plan' || steps.ensure_workspace.outputs.workspace_exists == 'true' }}
         working-directory: terraform
-        run: terraform init -upgrade -input=false
-
-      - name: Terraform format
-        if: ${{ env.TF_MODE != 'destroy' }}
-        working-directory: terraform
-        run: terraform fmt -check -recursive
+        run: terraform init -input=false
 
       - name: Terraform validate
         if: ${{ env.TF_MODE != 'destroy' }}

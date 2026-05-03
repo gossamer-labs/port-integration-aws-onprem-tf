@@ -13,6 +13,7 @@ locals {
   cloudtrail_log_bucket_for_policy = local.cloudtrail_managed_bucket ? aws_s3_bucket.cloudtrail_logs[0].id : var.cloudtrail_existing_log_bucket_name
 }
 
+# Note: check blocks surface validation issues but do not halt apply by default (Terraform 1.5+).
 check "cloudtrail_byo_bucket_name" {
   assert {
     condition = (
@@ -71,6 +72,31 @@ resource "aws_s3_bucket_versioning" "cloudtrail_logs" {
   versioning_configuration {
     status = "Enabled"
   }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail_logs" {
+  count = local.cloudtrail_managed_bucket ? 1 : 0
+
+  bucket = aws_s3_bucket.cloudtrail_logs[0].id
+
+  rule {
+    id     = "expire-cloudtrail-logs"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = var.cloudtrail_log_bucket_object_expiration_days
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = var.cloudtrail_log_bucket_noncurrent_version_expiration_days
+    }
+  }
+
+  depends_on = [
+    aws_s3_bucket_versioning.cloudtrail_logs
+  ]
 }
 
 data "aws_iam_policy_document" "cloudtrail_logs" {

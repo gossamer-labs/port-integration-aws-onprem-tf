@@ -20,7 +20,8 @@ network_enable_nat_gateway   = false
 
 port_base_url = "https://api.us.port.io"
 
-integration_identifier = "aws-tf-live-gossamer-int"
+# Integration identifier defaults to aws-on-prem-live-<organization> when unset (see variables_integration.tf).
+organization = "gossamer-labs"
 
 initialize_port_resources = true
 scheduled_resync_interval = 1440
@@ -40,5 +41,5 @@ cluster_name = "port-ocean-aws-exporter"
 # Provide live_events_api_key via TF_VAR_live_events_api_key (e.g. openssl rand -hex 32). See README.
 
 # CloudTrail — see variables_cloudtrail.tf and cloudtrail.tf (created when allow_incoming_requests and cloudtrail_enabled are true).
-# cloudtrail_enabled = true
+cloudtrail_enabled = true
 # cloudtrail_existing_log_bucket_name = null   # or set to an existing bucket name
