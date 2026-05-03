@@ -32,14 +32,14 @@ variable "scheduled_resync_interval" {
   default     = 1440
 }
 
-variable "organization" {
-  description = "Short identifier for your organization. Used with integration_identifier when unset: aws-on-prem-tf-live-<organization>."
+variable "port_org_slug" {
+  description = "Short slug for your org, used in the default Port integration id when integration_identifier is unset: aws-on-prem-tf-live-<port_org_slug>."
   type        = string
   default     = "gossamer-labs"
 }
 
 variable "integration_identifier" {
-  description = "Stable identifier for this integration in Port (set before first apply; hard to change later). If null, defaults to aws-on-prem-tf-live-<organization>."
+  description = "Stable identifier for this integration in Port (set before first apply; hard to change later). If null, defaults to aws-on-prem-tf-live-<port_org_slug>."
   type        = string
   default     = null
   nullable    = true

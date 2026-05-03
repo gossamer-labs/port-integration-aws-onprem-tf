@@ -1,7 +1,7 @@
 locals {
-  # If integration_identifier is null or blank, derive from organization.
+  # If integration_identifier is null or blank, derive from port_org_slug.
   integration_identifier = (
-    var.integration_identifier != null && trimspace(var.integration_identifier) != "" ? trimspace(var.integration_identifier) : "aws-on-prem-tf-live-${var.organization}"
+    var.integration_identifier != null && trimspace(var.integration_identifier) != "" ? trimspace(var.integration_identifier) : "aws-on-prem-tf-live-${var.port_org_slug}"
   )
 }
 
