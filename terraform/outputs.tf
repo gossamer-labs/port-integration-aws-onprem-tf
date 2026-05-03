@@ -3,18 +3,27 @@ output "integration_identifier" {
   value       = local.integration_identifier
 }
 
-output "live_events_webhook_url" {
-  description = "HTTPS URL for EventBridge→integration webhook (POST /integration/webhook); null when allow_incoming_requests is false"
-  value = (
-    var.allow_incoming_requests ?
-    format(
-      "https://%s.execute-api.%s.amazonaws.com/production/integration/webhook",
-      module.aws.module.api_gateway[0].aws_api_gateway_rest_api.rest_api.id,
-      var.aws_region
-    ) :
-    null
-  )
-}
+# -----------------------------------------------------------------------------
+# live_events_webhook_url — intentionally omitted (Terraform 1.14+)
+# -----------------------------------------------------------------------------
+# The Port aws_container_app example module declares no outputs. Terraform types
+# module.aws using only those outputs, so the root module cannot reference nested
+# modules such as module.aws.module.api_gateway[0].aws_api_gateway_rest_api...
+# ("module.aws does not have an attribute named module").
+#
+# To expose this URL from Terraform, upstream would add an output on aws_container_app,
+# or you maintain a fork. Otherwise get the REST API id from AWS Console (API Gateway) or
+# terraform state show 'module.aws.module.api_gateway[0].aws_api_gateway_rest_api.rest_api'
+# after apply, then: https://<id>.execute-api.<region>.amazonaws.com/production/integration/webhook
+#
+# output "live_events_webhook_url" {
+#   description = "HTTPS URL for EventBridge→integration webhook (POST /integration/webhook)"
+#   value = var.allow_incoming_requests ? format(
+#     "https://%s.execute-api.%s.amazonaws.com/production/integration/webhook",
+#     module.aws.module.api_gateway[0].aws_api_gateway_rest_api.rest_api.id,
+#     var.aws_region
+#   ) : null
+# }
 
 output "network_vpc_id" {
   description = "VPC used by the Port Ocean ECS service"

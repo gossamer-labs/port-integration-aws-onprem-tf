@@ -106,8 +106,20 @@ Files below cover **network bootstrap**, **CloudTrail**, the **Port Ocean** modu
 | [`network.tf`](terraform/network.tf) | `terraform-aws-modules/vpc` (**v5.x**, pairs with Port module’s AWS provider **5.x**) |
 | [`cloudtrail.tf`](terraform/cloudtrail.tf) | Account CloudTrail + optional managed S3 log bucket (when live events on) |
 | [`main.tf`](terraform/main.tf) | `module "aws"` — Port [`aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) |
-| [`outputs.tf`](terraform/outputs.tf) | VPC id, subnet ids, create mode, **`integration_identifier`**, **`live_events_webhook_url`**, CloudTrail / log bucket (when created) |
+| [`outputs.tf`](terraform/outputs.tf) | VPC id, subnet ids, create mode, **`integration_identifier`**, CloudTrail / log bucket (when created). No **`live_events_webhook_url`** output—see [Live events webhook URL](#live-events-webhook-url-terraform-output) |
 | [`terraform.tfvars`](terraform/terraform.tfvars) | Non-secret defaults (`port_org_slug`, **`cluster_name`**, `aws_region`, **`allow_incoming_requests`**, etc.) |
+
+### Live events webhook URL (Terraform output)
+
+There is **no** root **`terraform output live_events_webhook_url`**. The Port [`aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) module does not declare **`outputs.tf`**, and Terraform **1.14+** types **`module.aws`** only from child **outputs**, so expressions such as **`module.aws.module.api_gateway[0].…`** fail from this repo (“**module.aws** does not have an attribute named **`module`**”). Exporting the URL from Terraform would require an upstream output on **`aws_container_app`** (or a fork).
+
+After apply, use **AWS Console → API Gateway → REST APIs** (default name **`port-ocean-aws-exporter`**), or:
+
+```bash
+terraform state show 'module.aws.module.api_gateway[0].aws_api_gateway_rest_api.rest_api'
+```
+
+Then build **`https://<rest_api_id>.execute-api.<region>.amazonaws.com/production/integration/webhook`**. See commented block in [`terraform/outputs.tf`](terraform/outputs.tf).
 
 ## Remote state (Terraform Cloud)
 
@@ -250,7 +262,7 @@ terraform apply
 
 After apply, confirm the pipeline end-to-end:
 
-1. **Terraform output** — run **`terraform output live_events_webhook_url`**; you should see the API Gateway URL for **`POST /integration/webhook`** (EventBridge target).
+1. **Webhook URL** — there is no **`terraform output live_events_webhook_url`** (see [Live events webhook URL](#live-events-webhook-url-terraform-output)). Use the API Gateway invoke URL or **`terraform state show`** as documented there.
 2. **EventBridge** — open **EventBridge → Rules** for rules created by the Port module; **Invocations** should increase after you create or change a supported resource (e.g. S3 bucket) *if* [CloudTrail is delivering management events](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-service-event-cloudtrail.html) (this repo enables a trail by default when live events are on).
 3. **Integration** — in Port, open the integration’s **event logs** / metrics if issues persist; check **CloudWatch** logs for the ECS task.
 4. **Catalog** — ensure your [integration mapping](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/installation) includes the resource kind you expect (e.g. `AWS::S3::Bucket` for buckets).
