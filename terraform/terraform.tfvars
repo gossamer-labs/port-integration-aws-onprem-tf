@@ -35,7 +35,8 @@ allow_incoming_requests = true
 create_default_sg = true
 assign_public_ip  = true
 
-cluster_name = "port-ocean-aws-exporter"
+# ECS cluster for the Ocean service; upstream IAM naming combines this with the integration id—keep short (see README).
+cluster_name = "port-exporter"
 # integration_version: omit for "latest", or set a concrete image tag from ghcr.io/port-labs for reproducible deploys.
 
 # Provide live_events_api_key via TF_VAR_live_events_api_key (e.g. openssl rand -hex 32). See README.

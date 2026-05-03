@@ -33,13 +33,13 @@ variable "scheduled_resync_interval" {
 }
 
 variable "port_org_slug" {
-  description = "Short slug for your org, used in the default Port integration id when integration_identifier is unset: aws-on-prem-tf-live-<port_org_slug>."
+  description = "Short slug for your org; default integration id when integration_identifier is unset: aws-on-prem-tf-live-<port_org_slug>. Longer values lengthen that id and can contribute to IAM resource name length limits in the Ocean module—prefer a short slug."
   type        = string
   default     = "gossamer-labs"
 }
 
 variable "integration_identifier" {
-  description = "Stable identifier for this integration in Port (set before first apply; hard to change later). If null, defaults to aws-on-prem-tf-live-<port_org_slug>."
+  description = "Stable identifier for this integration in Port (set before first apply; hard to change later). If null, defaults to aws-on-prem-tf-live-<port_org_slug>. If too long with cluster_name, IAM names from the Ocean module may exceed AWS limits—shorten this or port_org_slug."
   type        = string
   default     = null
   nullable    = true
@@ -78,7 +78,7 @@ variable "assign_public_ip" {
 }
 
 variable "cluster_name" {
-  description = "ECS cluster name for the Port Ocean service"
+  description = "ECS cluster name for the Port Ocean service. The Ocean module uses this with the integration identifier when building some AWS resource names—keep short to avoid IAM name length failures (64-char role name limit)."
   type        = string
 }
 

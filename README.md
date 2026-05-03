@@ -8,6 +8,16 @@ Configuration lives under [`terraform/`](terraform/). The stack **creates a smal
 
 **Integration identifier:** set **`port_org_slug`** in [`terraform.tfvars`](terraform/terraform.tfvars) (default `gossamer-labs`). The Port integration identifier is **`aws-on-prem-tf-live-<port_org_slug>`** unless you override **`integration_identifier`** explicitly in Terraform.
 
+### IAM role name length (integration naming)
+
+[IAM role names](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html) must be **64 characters or fewer**. The [`aws_container_app`](terraform/main.tf) module from [`port-labs/integration-factory/ocean`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) creates IAM roles whose **names** include a service-style string **derived by that module** from **`cluster_name`** and the Port **`integration.identifier`** (your **`integration_identifier`**, or the default **`aws-on-prem-tf-live-<port_org_slug>`**). If those strings are too long together, **`terraform apply`** can fail with an error such as **`expected length of name to be in the range (1 - 64)`** on **`aws_iam_role`**.
+
+- **Primary lever:** **`port_org_slug`** — longer slugs lengthen the default integration id. Prefer a **short, stable** slug (abbreviation is fine), especially when the company name is long.
+- **Override:** set **`integration_identifier`** explicitly to a shorter stable value when needed (still **choose before first apply** if possible—see [`variables_integration.tf`](terraform/variables_integration.tf)).
+- **Secondary lever:** **`cluster_name`** — stock default **`port-exporter`** in [`terraform.tfvars`](terraform/terraform.tfvars); shorten further only if IAM errors persist after adjusting the integration id.
+
+If you hit this limit, shorten **`port_org_slug`** / **`integration_identifier`** / **`cluster_name`** and re-run **`terraform plan`** until the proposed IAM resources fit.
+
 **`event_listener_type = "POLLING"`** matches [Port’s Terraform examples](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/installation): it controls scheduled sync with Port; it is **not** a substitute for live events (those use the ingress path above).
 
 ## Greenfield vs bring-your-own infrastructure
@@ -88,7 +98,7 @@ Files below cover **network bootstrap**, **CloudTrail**, the **Port Ocean** modu
 | [`cloudtrail.tf`](terraform/cloudtrail.tf) | Account CloudTrail + optional managed S3 log bucket (when live events on) |
 | [`main.tf`](terraform/main.tf) | `module "aws"` — Port [`aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) |
 | [`outputs.tf`](terraform/outputs.tf) | VPC id, subnet ids, create mode, **`integration_identifier`**, **`live_events_webhook_url`**, CloudTrail / log bucket (when created) |
-| [`terraform.tfvars`](terraform/terraform.tfvars) | Non-secret defaults (`port_org_slug`, `aws_region`, **`allow_incoming_requests`**, etc.) |
+| [`terraform.tfvars`](terraform/terraform.tfvars) | Non-secret defaults (`port_org_slug`, **`cluster_name`**, `aws_region`, **`allow_incoming_requests`**, etc.) |
 
 ## Remote state (Terraform Cloud)
 
@@ -240,7 +250,7 @@ After apply, confirm the pipeline end-to-end:
 
 - **AWS:** Ensure credentials target **`us-east-2`** (matches [`terraform.tfvars`](terraform/terraform.tfvars)) before `terraform plan` / `apply`.
 - **AWS / GitHub:** Set repository variables **`AWS_ACCOUNT_ID`** and optionally **`AWS_ROLE_NAME`** to match the IAM role used for OIDC (defaults match this repo’s example). For static credentials, set **`AWS_USE_STATIC_CREDENTIALS=true`** and add **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`** secrets.
-- **Port org slug:** Set **`port_org_slug`** in [`terraform.tfvars`](terraform/terraform.tfvars) if you are not using the default; the Port integration identifier becomes **`aws-on-prem-tf-live-<port_org_slug>`** unless you set **`integration_identifier`** in Terraform.
+- **Port org slug:** Set **`port_org_slug`** in [`terraform.tfvars`](terraform/terraform.tfvars) if you are not using the default; the Port integration identifier becomes **`aws-on-prem-tf-live-<port_org_slug>`** unless you set **`integration_identifier`** in Terraform. Long slugs can push upstream IAM role **names** over AWS’s **64-character** limit—see [IAM role name length](#iam-role-name-length-integration-naming).
 - **Secrets / CI:** Export **`TF_VAR_port_client_id`**, **`TF_VAR_port_client_secret`**, and **`TF_VAR_live_events_api_key`** locally; add **`TF_API_TOKEN`**, **`PORT_CLIENT_ID`**, **`PORT_CLIENT_SECRET`**, and **`PORT_LIVE_EVENTS_API_KEY`** as **repository secrets** (Settings → Secrets and variables → Actions → **Secrets**). Omitting **`PORT_LIVE_EVENTS_API_KEY`** in CI skips passing **`live_events_api_key`** into Terraform — see GitHub Actions secrets note above. Optionally set repository **Variables** **`TFC_WORKSPACE`** (and **`AWS_REGION`** / **`AWS_ACCOUNT_ID`** / **`AWS_ROLE_NAME`**) for **PR plan** and **`main` apply** — defaults match the workflow if omitted. For local Terraform Cloud auth, use **`terraform login`** or **`TF_TOKEN_app_terraform_io`** (see [**Secrets**](#secrets--environment-variables-never-commit)).
 - **Port:** Confirm **`port_base_url`** matches your Port region (US `api.us.port.io` vs EU `api.port.io`).
 - **Network:** If CIDR **`10.48.0.0/16`** overlaps another VPC or peered network, change `network_vpc_cidr` and `network_public_subnet_cidrs` together.
