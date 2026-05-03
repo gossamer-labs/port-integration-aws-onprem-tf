@@ -8,11 +8,21 @@ Configuration lives under [`terraform/`](terraform/). The stack **creates a smal
 
 **`event_listener_type = "POLLING"`** matches [Port’s Terraform examples](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/installation): it controls scheduled sync with Port; it is **not** a substitute for live events (those use the ingress path above).
 
+## Live events prerequisites (CloudTrail)
+
+Port’s EventBridge rules match **`AWS API Call via CloudTrail`** on the **default** event bus. That requires an **active CloudTrail trail** logging **management events** (see [AWS: events via CloudTrail](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-service-event-cloudtrail.html)). **CloudTrail Event history** in the console can show recent APIs even when **no trail** exists; EventBridge rules stay at **zero invocations** until a trail is logging.
+
+When **`allow_incoming_requests`** and **`cloudtrail_enabled`** are both **`true`**, this repo creates a **multi-Region** trail (management events, global service events), an **S3 log bucket** by default, and the bucket policy CloudTrail needs. Optional **`cloudtrail_existing_log_bucket_name`** uses your bucket instead; Terraform must be allowed to **`PutBucketPolicy`** on it.
+
+Expect **S3 storage** charges for log files and normal **CloudTrail** pricing beyond free-tier assumptions for trails.
+
+**Security (managed log bucket):** [Block Public Access](https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html), **bucket owner enforced** (no ACL reliance), **default SSE-S3 encryption**, **versioning** enabled, **TLS-only** access (`Deny` when `aws:SecureTransport` is false), CloudTrail **Put/Get** limited to this trail’s ARN, and **log file integrity validation** on the trail. For **`cloudtrail_existing_log_bucket_name`**, Terraform applies the same CloudTrail + TLS policy statements—you remain responsible for baseline bucket hardening (encryption defaults, blocking public access, retention/lifecycle, KMS if required by policy).
+
 ## Prerequisites
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) **1.14.5+** (see [`terraform.tf`](terraform/terraform.tf))
 - [HashiCorp Terraform Cloud](https://developer.hashicorp.com/terraform/cloud-docs) access to organization **`gossamer-labs`**, workspace tag **`port-integration-aws-tf`**. Authenticate the CLI with **`terraform login`** or **`export TF_TOKEN_app_terraform_io="..."`** (see [**Secrets**](#secrets--environment-variables-never-commit)).
-- AWS credentials able to create VPC, ECS, IAM, load balancing, API Gateway, EventBridge, and related resources used by the [Ocean `aws_container_app` module](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app).
+- AWS credentials able to create VPC, ECS, IAM, load balancing, API Gateway, EventBridge, **CloudTrail**, **S3** (log bucket), and related resources used by the [Ocean `aws_container_app` module](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app).
 - **Port region:** this repo defaults to the **US** API host **`https://api.us.port.io`** in [`terraform.tfvars`](terraform/terraform.tfvars). Use **`https://api.port.io`** for EU.
 
 ## AWS authentication
@@ -45,10 +55,12 @@ export TF_TOKEN_app_terraform_io="your-token-here"
 | [`terraform.tf`](terraform/terraform.tf) | Terraform version, **Terraform Cloud** org `gossamer-labs`, workspace tag **`port-integration-aws-tf`**, AWS provider constraints |
 | [`providers.tf`](terraform/providers.tf) | AWS provider; **`default_tags`** (`Environment`, `ManagedBy`, `Project`, `Repository`) |
 | [`variables_network.tf`](terraform/variables_network.tf) | VPC / subnets (`network_*`), `aws_region` |
+| [`variables_cloudtrail.tf`](terraform/variables_cloudtrail.tf) | CloudTrail + log bucket (`cloudtrail_*`), gated with live events |
 | [`variables_integration.tf`](terraform/variables_integration.tf) | Port Ocean module inputs (`port_*`, integration, ECS) |
 | [`network.tf`](terraform/network.tf) | `terraform-aws-modules/vpc` (**v5.x**, pairs with Port module’s AWS provider **5.x**) |
+| [`cloudtrail.tf`](terraform/cloudtrail.tf) | Account CloudTrail + optional managed S3 log bucket (when live events on) |
 | [`main.tf`](terraform/main.tf) | `module "aws"` — Port [`aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) |
-| [`outputs.tf`](terraform/outputs.tf) | VPC id, subnet ids, create mode |
+| [`outputs.tf`](terraform/outputs.tf) | VPC id, subnet ids, create mode, CloudTrail / log bucket (when created) |
 | [`terraform.tfvars`](terraform/terraform.tfvars) | Non-secret defaults (`integration_identifier`, `aws_region`, **`allow_incoming_requests`**, etc.) |
 
 ## Remote state (Terraform Cloud)
