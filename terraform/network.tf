@@ -1,3 +1,9 @@
+# -----------------------------------------------------------------------------
+# Optional network bootstrap for greenfield accounts.
+# Creates module.vpc unless network_use_existing_vpc is true; see locals.vpc_id_for_port
+# and subnets_for_port in network.tf, wired into module "aws" in main.tf.
+# Bring your own VPC: set network_use_existing_vpc and existing_* in variables_network.tf (README).
+# -----------------------------------------------------------------------------
 data "aws_availability_zones" "available" {
   filter {
     name   = "opt-in-status"

@@ -1,3 +1,5 @@
+# Port Ocean integration (ECS, ALB, API Gateway, EventBridge, etc.).
+# Optional VPC and CloudTrail resources live in network.tf and cloudtrail.tf.
 locals {
   # If integration_identifier is null or blank, derive from port_org_slug.
   integration_identifier = (

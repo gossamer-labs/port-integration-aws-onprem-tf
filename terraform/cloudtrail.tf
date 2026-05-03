@@ -1,3 +1,8 @@
+# -----------------------------------------------------------------------------
+# Optional CloudTrail + S3 for live events (EventBridge ← management APIs).
+# Disable creation when the account already has a suitable trail: cloudtrail_enabled = false
+# (see README). Existing log bucket only: cloudtrail_existing_log_bucket_name.
+# -----------------------------------------------------------------------------
 # CloudTrail + S3 so management API events reach EventBridge for Port live events.
 # An active trail logging management events publishes `AWS API Call via CloudTrail` to the
 # default event bus (see AWS EventBridge docs). Event history alone does not replace a trail.

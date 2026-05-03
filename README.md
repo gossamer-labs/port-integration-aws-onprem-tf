@@ -10,6 +10,27 @@ Configuration lives under [`terraform/`](terraform/). The stack **creates a smal
 
 **`event_listener_type = "POLLING"`** matches [Port’s Terraform examples](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/installation): it controls scheduled sync with Port; it is **not** a substitute for live events (those use the ingress path above).
 
+## Greenfield vs bring-your-own infrastructure
+
+Terraform separates **optional account bootstrap** (network, CloudTrail) from the **Port Ocean stack** in [`main.tf`](terraform/main.tf) and from **state and CI** ([`terraform.tf`](terraform/terraform.tf), GitHub Actions). That split lets both **empty AWS accounts** and **accounts that already have networking or audit trails** use the same configuration.
+
+| Area | What it is | Greenfield (defaults) | Bring your own |
+|-------|------------|-------------------------|----------------|
+| **Network** | VPC and subnets for ECS | [`network.tf`](terraform/network.tf) creates a VPC plus **public** subnets (see [`variables_network.tf`](terraform/variables_network.tf)). | Set **`network_use_existing_vpc = true`**, **`network_existing_vpc_id`**, and **`network_existing_subnet_ids`** (at least two subnets in different AZs). Match **`assign_public_ip`** / **`network_enable_nat_gateway`** / **`network_private_subnet_cidrs`** to your layout (public subnets + **`assign_public_ip = true`** is the default bundle). |
+| **CloudTrail + S3** | Logging so **live events** receive management API events via EventBridge | When **`allow_incoming_requests`** and **`cloudtrail_enabled`** are **`true`**, [`cloudtrail.tf`](terraform/cloudtrail.tf) creates a multi-Region trail and optionally a **managed** log bucket. | **`cloudtrail_enabled = false`** if the account already has a trail logging **management events** (see [Live events prerequisites](#live-events-prerequisites-cloudtrail)). **`cloudtrail_existing_log_bucket_name`** uses **your** bucket for the trail **this repo still creates**—Terraform attaches bucket policy; you still add a trail resource in AWS. |
+| **Port Ocean integration** | ECS, ALB, API Gateway, EventBridge rules, SSM, IAM, etc. | [`main.tf`](terraform/main.tf) [`module "aws"`](terraform/main.tf) ([`aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app)). | No separate variables to attach an **existing** ALB, API Gateway, or ECS service—the upstream module owns those resources. Fork or extend the module if you need that. |
+
+**Bootstrap vs integration:** VPC and CloudTrail/S3 are **optional** when you already run equivalents (see table). **[`main.tf`](terraform/main.tf)** deploys the **integration runtime** (ECS, ingress, sync). **[`terraform.tf`](terraform/terraform.tf)** and **[`ensure-tfc-workspace`](.github/actions/ensure-tfc-workspace/action.yml)** handle **remote state and CI**—they are not AWS resources:
+
+| Piece | Purpose |
+|-------|---------|
+| **[`terraform.tf`](terraform/terraform.tf) `cloud {}`** | Default **Terraform Cloud** backend (`organization` here is **HashiCorp**, not Port—see **`port_org_slug`** for Port naming). |
+| **GitHub Actions [`ensure-tfc-workspace`](.github/actions/ensure-tfc-workspace/action.yml)** | Ensures a Terraform Cloud workspace exists (tagged, **local** execution). Skipped when **`USE_TERRAFORM_CLOUD_BACKEND`** is **`false`**—see [GitHub Actions](#github-actions). |
+
+**Repository variable `USE_TERRAFORM_CLOUD_BACKEND`:** GitHub cannot read your `terraform.tf`. After you switch to **S3 or local** state ([Without Terraform Cloud](#without-terraform-cloud)), set this variable to **`false`** so CI does **not** call the Terraform Cloud API or run **`ensure-tfc-workspace`**. Leave unset or any value other than **`false`** for the stock **Terraform Cloud** setup.
+
+**Secrets:** **`TF_API_TOKEN`** is required for Terraform Cloud remote state and for **`ensure-tfc-workspace`**. If you use only S3/local backend and set **`USE_TERRAFORM_CLOUD_BACKEND=false`**, you may omit **`TF_API_TOKEN`** in CI for **`terraform init`** (configure AWS credentials for the S3 backend instead).
+
 ## Live events prerequisites (CloudTrail)
 
 Port’s EventBridge rules match **`AWS API Call via CloudTrail`** on the **default** event bus. That requires an **active CloudTrail trail** logging **management events** (see [AWS: events via CloudTrail](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-service-event-cloudtrail.html)). **CloudTrail Event history** in the console can show recent APIs even when **no trail** exists; EventBridge rules stay at **zero invocations** until a trail is logging.
@@ -54,6 +75,8 @@ export TF_TOKEN_app_terraform_io="your-token-here"
 
 ## Configuration layout
 
+Files below cover **network bootstrap**, **CloudTrail**, the **Port Ocean** module, and outputs. For what is optional in mature accounts, see [Greenfield vs bring-your-own infrastructure](#greenfield-vs-bring-your-own-infrastructure). To remove a deployment, see [Teardown](#teardown).
+
 | File | Purpose |
 |------|---------|
 | [`terraform.tf`](terraform/terraform.tf) | Terraform version, **Terraform Cloud** org `gossamer-labs`, workspace tag **`port-integration-aws-on-prem-tf-live`**, AWS provider constraints |
@@ -76,6 +99,7 @@ Organization **`gossamer-labs`**. Workspaces that carry tag **`port-integration-
 1. In [`terraform.tf`](terraform/terraform.tf), **comment out** the entire **`cloud { ... }`** block (Terraform allows only one backend configuration).
 2. Uncomment and fill in the **`backend "s3"`** example in the same file, **or** omit a backend to use **local** state (`terraform.tfstate` in the working directory).
 3. Run **`terraform init -migrate-state`** if you are switching an existing workspace.
+4. In GitHub: set repository variable **`USE_TERRAFORM_CLOUD_BACKEND`** to **`false`** so Actions skips **`ensure-tfc-workspace`** (see [Greenfield vs bring-your-own](#greenfield-vs-bring-your-own-infrastructure)). **`TF_API_TOKEN`** may be unnecessary for **`terraform init`** if state is not stored in Terraform Cloud.
 
 **Selecting a workspace (non-interactive):** set **`TF_WORKSPACE`** to the workspace **name** (same string as GitHub Actions `workflow_dispatch` → **`tf_workspace`**).
 
@@ -101,7 +125,7 @@ Workflow [`.github/workflows/port-integration-aws-on-prem-tf-live.yml`](.github/
 | **Push to `main`** (same paths) | **`terraform` job:** **`terraform apply`** (runs after merge to trunk). |
 | **`workflow_dispatch`** | **`format`** then **`terraform` job:** choose **plan** / **apply** / **destroy** and supply **`tf_workspace`**, **`aws_region`**, **`aws_account_id`**, **`aws_role_name`** (defaults match repository variables below). |
 
-On every **`terraform`** run, [**`ensure-tfc-workspace`**](.github/actions/ensure-tfc-workspace/action.yml) runs first (for **plan**/**apply**, creates the workspace when missing; **destroy** requires an existing workspace). Applies tag **`port-integration-aws-on-prem-tf-live`**, **local** execution mode.
+When repository variable **`USE_TERRAFORM_CLOUD_BACKEND`** is unset or not **`false`**, [**`ensure-tfc-workspace`**](.github/actions/ensure-tfc-workspace/action.yml) runs before **`terraform init`** (for **plan**/**apply**, creates the workspace when missing; **destroy** requires an existing workspace unless you use a non-TFC backend—see variable below). Applies tag **`port-integration-aws-on-prem-tf-live`**, **local** execution mode. Set **`USE_TERRAFORM_CLOUD_BACKEND=false`** after switching [`terraform.tf`](terraform/terraform.tf) to S3/local backend so this step is skipped.
 
 ### GitHub Actions: OIDC vs static AWS credentials
 
@@ -112,6 +136,7 @@ On every **`terraform`** run, [**`ensure-tfc-workspace`**](.github/actions/ensur
 
 | Variable | Purpose |
 |----------|---------|
+| **`USE_TERRAFORM_CLOUD_BACKEND`** | Set to **`false`** when [`terraform.tf`](terraform/terraform.tf) uses **S3 or local** state instead of **`cloud {}`**. Skips **`ensure-tfc-workspace`** and avoids Terraform Cloud API calls in CI. Omit or use any other value for default Terraform Cloud behavior. |
 | **`TFC_WORKSPACE`** | Terraform Cloud **workspace name** (must match a workspace tagged **`port-integration-aws-on-prem-tf-live`**). Optional for PR / **`main`**; workflow defaults to **`port-integration-aws-on-prem-tf-live`** if unset. |
 | **`AWS_REGION`** | AWS region for AWS credentials (optional; defaults to **`us-east-2`** in the workflow). Must match **`aws_region`** in [`terraform.tfvars`](terraform/terraform.tfvars). |
 | **`AWS_ACCOUNT_ID`** | AWS account ID used to build the OIDC role ARN `arn:aws:iam::<id>:role/<name>` (optional; defaults to **`936835732720`**). |
@@ -122,7 +147,7 @@ On every **`terraform`** run, [**`ensure-tfc-workspace`**](.github/actions/ensur
 
 | Secret | Purpose |
 |--------|---------|
-| `TF_API_TOKEN` | Terraform Cloud API token |
+| `TF_API_TOKEN` | Terraform Cloud API token (for `cloud {}` remote state and **`ensure-tfc-workspace`** in CI). If you use S3/local state and **`USE_TERRAFORM_CLOUD_BACKEND=false`**, omit or leave unset—[`cli_config_credentials_token`](https://github.com/hashicorp/setup-terraform) is empty in that case. |
 | `PORT_CLIENT_ID` | `TF_VAR_port_client_id` |
 | `PORT_CLIENT_SECRET` | `TF_VAR_port_client_secret` |
 | `PORT_LIVE_EVENTS_API_KEY` | Same value as **`TF_VAR_live_events_api_key`** (e.g. from `openssl rand -hex 32`); wired to Terraform as **`TF_VAR_live_events_api_key`** |
@@ -161,6 +186,25 @@ If **`configure-aws-credentials`** fails with **`Not authorized to perform sts:A
 ```
 
 Adjust account ID, repo slug, or **`aud`** if your org differs. The **`terraform`** job sets **`permissions: id-token: write`** for OIDC.
+
+## Teardown
+
+Remove AWS resources created by this Terraform configuration, then clean up Port and optional cloud state as needed.
+
+### AWS — `terraform destroy`
+
+1. Run the workflow [`.github/workflows/port-integration-aws-on-prem-tf-live.yml`](.github/workflows/port-integration-aws-on-prem-tf-live.yml) via **`workflow_dispatch`** with **`mode: destroy`**. Use the same **`tf_workspace`**, **`aws_region`**, **`aws_account_id`**, and **`aws_role_name`** inputs you use for apply (defaults match repository variables).
+2. With **Terraform Cloud** remote state, **`ensure-tfc-workspace`** runs unless **`USE_TERRAFORM_CLOUD_BACKEND=false`**; destroy expects the workspace to exist in that path. If you use **S3 or local** state and **`USE_TERRAFORM_CLOUD_BACKEND=false`**, CI skips workspace ensure but still runs **`terraform destroy`** when dispatching destroy—see [Greenfield vs bring-your-own infrastructure](#greenfield-vs-bring-your-own-infrastructure) and [GitHub Actions](#github-actions).
+3. If destroy fails (for example an **S3** bucket is not empty), fix the blocker in AWS and **re-run destroy** until it completes.
+
+### Port — integration registration
+
+**Terraform does not delete the integration entry in Port.** After AWS destroy succeeds, **remove or disconnect the integration** in the Port product (UI or API) if you no longer want it listed.
+
+### Optional cleanup
+
+- **Terraform Cloud:** the **workspace** and **state history** remain until you delete the workspace in Terraform Cloud if you no longer need them.
+- **Catalog:** blueprints, mappings, or entities created in Port (for example when **`initialize_port_resources`** was **`true`**) may persist there independently of AWS—review [Port documentation](https://docs.port.io/) for your catalog hygiene process.
 
 ## Run locally
 

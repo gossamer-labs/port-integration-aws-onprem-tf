@@ -79,6 +79,7 @@ jobs:
     # TF_WORKSPACE selects one Terraform Cloud workspace when multiple match tag port-integration-aws-on-prem-tf-live.
     # PR / push to main: optional repository Variables TFC_WORKSPACE, AWS_REGION, AWS_ACCOUNT_ID, AWS_ROLE_NAME (defaults in env below).
     # Set repository Variable AWS_USE_STATIC_CREDENTIALS=true to use secrets AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY instead of OIDC.
+    # Set USE_TERRAFORM_CLOUD_BACKEND=false when terraform.tf uses S3/local backend (skips ensure-tfc-workspace).
     # TF_VAR_live_events_api_key comes from repository secret PORT_LIVE_EVENTS_API_KEY.
     env:
       TF_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || (github.event_name == 'pull_request' && 'plan' || github.event_name == 'push' && 'apply') }}
@@ -98,7 +99,7 @@ jobs:
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.14.5
-          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+          cli_config_credentials_token: ${{ vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' && secrets.TF_API_TOKEN || '' }}
 
       - name: Configure AWS credentials (OIDC)
         if: ${{ vars.AWS_USE_STATIC_CREDENTIALS != 'true' }}
@@ -117,6 +118,7 @@ jobs:
 
       - name: Ensure Terraform Cloud workspace
         id: ensure_workspace
+        if: ${{ vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' }}
         uses: ./.github/actions/ensure-tfc-workspace
         with:
           tfc_token: ${{ secrets.TF_API_TOKEN }}
@@ -127,7 +129,7 @@ jobs:
           create_if_missing: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.mode != 'destroy' }}
 
       - name: Terraform init
-        if: ${{ env.TF_MODE == 'apply' || env.TF_MODE == 'plan' || steps.ensure_workspace.outputs.workspace_exists == 'true' }}
+        if: ${{ env.TF_MODE == 'apply' || env.TF_MODE == 'plan' || steps.ensure_workspace.outputs.workspace_exists == 'true' || (vars.USE_TERRAFORM_CLOUD_BACKEND == 'false' && env.TF_MODE == 'destroy') }}
         working-directory: terraform
         run: terraform init -input=false
 
@@ -147,6 +149,6 @@ jobs:
         run: terraform apply -auto-approve -input=false
 
       - name: Terraform destroy
-        if: ${{ env.TF_MODE == 'destroy' && steps.ensure_workspace.outputs.workspace_exists == 'true' }}
+        if: ${{ env.TF_MODE == 'destroy' && (steps.ensure_workspace.outputs.workspace_exists == 'true' || vars.USE_TERRAFORM_CLOUD_BACKEND == 'false') }}
         working-directory: terraform
         run: terraform destroy -auto-approve -input=false
