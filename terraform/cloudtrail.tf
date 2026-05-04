@@ -13,7 +13,7 @@ data "aws_partition" "current" {}
 locals {
   cloudtrail_should_create         = var.allow_incoming_requests && var.cloudtrail_enabled
   cloudtrail_managed_bucket        = local.cloudtrail_should_create && var.cloudtrail_existing_log_bucket_name == null
-  cloudtrail_trail_name            = "${var.cloudtrail_name_prefix}-port-live-events"
+  cloudtrail_trail_name            = "${var.cloudtrail_name_prefix}-live-events"
   cloudtrail_new_bucket_name       = "${var.cloudtrail_name_prefix}-cloudtrail-logs-${data.aws_caller_identity.current.account_id}"
   cloudtrail_log_bucket_for_policy = local.cloudtrail_managed_bucket ? aws_s3_bucket.cloudtrail_logs[0].id : var.cloudtrail_existing_log_bucket_name
 }

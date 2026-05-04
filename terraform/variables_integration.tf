@@ -35,7 +35,7 @@ variable "scheduled_resync_interval" {
 variable "port_org_slug" {
   description = <<-EOT
     Short org slug. When integration_identifier is null, the Port integration id defaults to
-    aws-onprem-tf-<port_org_slug>. The upstream module names IAM roles using
+    onprem-tf-<port_org_slug>. The upstream module names IAM roles using
     ecs-task-execution-role-port-ocean-aws-<that_identifier>; AWS IAM role names are capped at
     64 characters, which implies len(service_name) <= 40 and, for type aws,
     len(identifier) <= 25. Prefer a short slug so the default id stays within that budget.
@@ -47,7 +47,7 @@ variable "port_org_slug" {
 variable "integration_identifier" {
   description = <<-EOT
     Stable identifier for this integration in Port (set before first apply; hard to change later).
-    If null, defaults to aws-onprem-tf-<port_org_slug>. Upstream builds ECS IAM role names from
+    If null, defaults to onprem-tf-<port_org_slug>. Upstream builds ECS IAM role names from
     port-ocean-aws-<identifier>; the longest prefix is ecs-task-execution-role- (24 chars), so
     the combined role name must stay <= 64 (service_name <= 40; for type aws, identifier <= 25).
     Shorten this or port_org_slug if apply fails on IAM name length. cluster_name does not feed

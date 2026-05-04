@@ -6,7 +6,7 @@ Configuration lives under [`terraform/`](terraform/). The stack **creates a smal
 
 [`terraform.tfvars`](terraform/terraform.tfvars) enables **`allow_incoming_requests = true`** so Terraform provisions ALB, API Gateway, and EventBridge for live events. Per [Port live events](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/live-events), live events are **single-account only**; multi-account setups need a separate design ([multi-account guide](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/multi_account)).
 
-**Integration identifier:** set **`port_org_slug`** in [`terraform.tfvars`](terraform/terraform.tfvars) (default **`gossint`**). The Port integration identifier is **`aws-onprem-tf-<port_org_slug>`** unless you override **`integration_identifier`** explicitly in Terraform.
+**Integration identifier:** set **`port_org_slug`** in [`terraform.tfvars`](terraform/terraform.tfvars) (default **`gossint`**). The Port integration identifier is **`onprem-tf-<port_org_slug>`** unless you override **`integration_identifier`** explicitly in Terraform.
 
 ### IAM role name length (integration naming)
 
@@ -16,9 +16,9 @@ AWS [IAM role `name` quotas](https://docs.aws.amazon.com/IAM/latest/UserGuide/re
 - **`aws_iam_role.task_execution_role.name`** = **`ecs-task-execution-role-`** + **`service_name`**. The literal prefix **`ecs-task-execution-role-`** is **24** characters, so **`len(service_name)` must be ≤ 40** (because **24 + 40 = 64**).
 - With **`integration.type = aws`**, **`service_name`** starts with **`port-ocean-aws-`** (**15** characters). So **`integration.identifier` must be ≤ 25** characters (**15 + 25 = 40**).
 
-**`cluster_name` does not appear in that IAM role name.** If apply fails on IAM length, shorten **`integration_identifier`** or **`port_org_slug`** (when using the default **`aws-onprem-tf-<port_org_slug>`**), not the ECS cluster name.
+**`cluster_name` does not appear in that IAM role name.** If apply fails on IAM length, shorten **`integration_identifier`** or **`port_org_slug`** (when using the default **`onprem-tf-<port_org_slug>`**), not the ECS cluster name.
 
-**Worked example with repo defaults:** identifier **`aws-onprem-tf-gossint`** → **`service_name`** = **`port-ocean-aws-aws-onprem-tf-gossint`** (**36** chars) → execution role name **`ecs-task-execution-role-port-ocean-aws-aws-onprem-tf-gossint`** (**60** chars, within **64**).
+**Worked example with repo defaults:** identifier **`onprem-tf-gossint`** → **`service_name`** = **`port-ocean-aws-onprem-tf-gossint`** (**31** chars) → execution role name **`ecs-task-execution-role-port-ocean-aws-onprem-tf-gossint`** (**55** chars, within **64**).
 
 **Levers**
 
@@ -56,7 +56,7 @@ Port’s EventBridge rules match **`AWS API Call via CloudTrail`** on the **defa
 
 When **`allow_incoming_requests`** and **`cloudtrail_enabled`** are both **`true`**, this repo creates a **multi-Region** trail (management events, global service events), an **S3 log bucket** by default, and the bucket policy CloudTrail needs. Optional **`cloudtrail_existing_log_bucket_name`** uses your bucket instead; Terraform must be allowed to **`PutBucketPolicy`** on it.
 
-**Managed log bucket name:** **`{cloudtrail_name_prefix}-cloudtrail-logs-{aws_account_id}`** (see [`cloudtrail.tf`](terraform/cloudtrail.tf)). The trailing **12-digit segment is your AWS account ID** from the account Terraform deploys into—not a random suffix. That keeps the bucket name **globally unique** in S3 and ties it to the account. Change the prefix with **`cloudtrail_name_prefix`** (default **`port-ocean`**) in [`variables_cloudtrail.tf`](terraform/variables_cloudtrail.tf).
+**Managed trail and log bucket names:** trail **`{cloudtrail_name_prefix}-live-events`**, bucket **`{cloudtrail_name_prefix}-cloudtrail-logs-{aws_account_id}`** (see [`cloudtrail.tf`](terraform/cloudtrail.tf)). The trailing **12-digit segment is your AWS account ID** from the account Terraform deploys into—not a random suffix. That keeps the bucket name **globally unique** in S3 and ties it to the account. Change the prefix with **`cloudtrail_name_prefix`** (default **`port-exporter`**) in [`variables_cloudtrail.tf`](terraform/variables_cloudtrail.tf).
 
 Expect **S3 storage** charges for log files and normal **CloudTrail** pricing beyond free-tier assumptions for trails. The managed log bucket uses an **S3 lifecycle rule** to expire current-version objects (default **365** days) and non-current versions (default **30** days); tune via **`cloudtrail_log_bucket_object_expiration_days`** and **`cloudtrail_log_bucket_noncurrent_version_expiration_days`** in [`variables_cloudtrail.tf`](terraform/variables_cloudtrail.tf).
 
@@ -271,7 +271,7 @@ After apply, confirm the pipeline end-to-end:
 
 - **AWS:** Ensure credentials target **`us-east-2`** (matches [`terraform.tfvars`](terraform/terraform.tfvars)) before `terraform plan` / `apply`.
 - **AWS / GitHub:** Set repository variables **`AWS_ACCOUNT_ID`** and optionally **`AWS_ROLE_NAME`** to match the IAM role used for OIDC (defaults match this repo’s example). For static credentials, set **`AWS_USE_STATIC_CREDENTIALS=true`** and add **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`** secrets.
-- **Port org slug:** Set **`port_org_slug`** in [`terraform.tfvars`](terraform/terraform.tfvars) if you are not using the default (**`gossint`**); the Port integration identifier becomes **`aws-onprem-tf-<port_org_slug>`** unless you set **`integration_identifier`** in Terraform. Long slugs can push upstream IAM role **names** over AWS’s **64-character** limit—see [IAM role name length](#iam-role-name-length-integration-naming).
+- **Port org slug:** Set **`port_org_slug`** in [`terraform.tfvars`](terraform/terraform.tfvars) if you are not using the default (**`gossint`**); the Port integration identifier becomes **`onprem-tf-<port_org_slug>`** unless you set **`integration_identifier`** in Terraform. Long slugs can push upstream IAM role **names** over AWS’s **64-character** limit—see [IAM role name length](#iam-role-name-length-integration-naming). Existing deployments that already registered **`aws-onprem-tf-<port_org_slug>`** in Port should set **`integration_identifier`** explicitly to that value until you intentionally migrate.
 - **Secrets / CI:** Export **`TF_VAR_port_client_id`**, **`TF_VAR_port_client_secret`**, and **`TF_VAR_live_events_api_key`** locally; add **`TF_API_TOKEN`**, **`PORT_CLIENT_ID`**, **`PORT_CLIENT_SECRET`**, and **`PORT_LIVE_EVENTS_API_KEY`** as **repository secrets** (Settings → Secrets and variables → Actions → **Secrets**). Omitting **`PORT_LIVE_EVENTS_API_KEY`** in CI skips passing **`live_events_api_key`** into Terraform — see GitHub Actions secrets note above. Optionally set repository **Variables** **`TFC_WORKSPACE`** (and **`AWS_REGION`** / **`AWS_ACCOUNT_ID`** / **`AWS_ROLE_NAME`**) for **PR plan** and **`main` apply** — defaults match the workflow if omitted. For local Terraform Cloud auth, use **`terraform login`** or **`TF_TOKEN_app_terraform_io`** (see [**Secrets**](#secrets--environment-variables-never-commit)).
 - **Port:** Confirm **`port_base_url`** matches your Port region (US `api.us.port.io` vs EU `api.port.io`).
 - **Network:** If CIDR **`10.48.0.0/16`** overlaps another VPC or peered network, change `network_vpc_cidr` and `network_public_subnet_cidrs` together.

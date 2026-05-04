@@ -11,9 +11,9 @@ variable "cloudtrail_enabled" {
 }
 
 variable "cloudtrail_name_prefix" {
-  description = "DNS-compliant prefix for the CloudTrail trail and managed S3 log bucket. Trail name: \"{prefix}-port-live-events\". Managed bucket: \"{prefix}-cloudtrail-logs-{aws_account_id}\" (suffix is the deployment AWS account ID for global S3 uniqueness)."
+  description = "DNS-compliant prefix for the CloudTrail trail and managed S3 log bucket. Trail name: \"{prefix}-live-events\". Managed bucket: \"{prefix}-cloudtrail-logs-{aws_account_id}\" (suffix is the deployment AWS account ID for global S3 uniqueness)."
   type        = string
-  default     = "port-ocean"
+  default     = "port-exporter"
 
   validation {
     condition     = can(regex("^[a-z0-9][a-z0-9-]{1,34}[a-z0-9]$", var.cloudtrail_name_prefix))

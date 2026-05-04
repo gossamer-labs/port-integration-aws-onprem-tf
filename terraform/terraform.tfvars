@@ -20,7 +20,7 @@ network_enable_nat_gateway   = false
 
 port_base_url = "https://api.us.port.io"
 
-# Integration identifier defaults to aws-onprem-tf-<port_org_slug> when unset (see variables_integration.tf / README IAM section).
+# Integration identifier defaults to onprem-tf-<port_org_slug> when unset (see variables_integration.tf / README IAM section).
 port_org_slug = "gossint"
 
 initialize_port_resources = true
