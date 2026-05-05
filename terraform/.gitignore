@@ -10,3 +10,6 @@ override.tf.json
 
 # Optional local secret files — prefer TF_VAR_* instead (see repository README)
 secrets.auto.tfvars
+
+# Private per-install overlays (not committed): pass as a second -var-file
+varfiles/*.local.tfvars

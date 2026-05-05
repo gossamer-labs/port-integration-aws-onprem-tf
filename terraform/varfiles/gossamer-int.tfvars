@@ -1,4 +1,20 @@
 # -----------------------------------------------------------------------------
+# Gossamer Integration
+# Pass: terraform plan -var-file=varfiles/gossamer-int.tfvars
+# Secrets: TF_VAR_port_client_id, TF_VAR_port_client_secret, TF_VAR_live_events_api_key
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Provider default_tags (see variables_integration.tf)
+# -----------------------------------------------------------------------------
+default_resource_tags = {
+  Environment = "gossamer-int"
+  ManagedBy   = "terraform"
+  Project     = "port-ocean-aws"
+  Repository  = "port-integration-aws-onprem-tf"
+}
+
+# -----------------------------------------------------------------------------
 # Network — see variables_network.tf and network.tf
 # -----------------------------------------------------------------------------
 
@@ -20,7 +36,7 @@ network_enable_nat_gateway   = false
 
 port_base_url = "https://api.us.port.io"
 
-# Integration identifier defaults to onprem-tf-<port_org_slug> when unset (see variables_integration.tf / README IAM section).
+# Integration identifier defaults to onprem-tf-<port_org_slug> when unset (see README IAM section).
 port_org_slug = "gossint"
 
 initialize_port_resources = true

@@ -3,6 +3,15 @@
 # Secrets: TF_VAR_port_client_id, TF_VAR_port_client_secret, TF_VAR_live_events_api_key (see README).
 # -----------------------------------------------------------------------------
 
+variable "default_resource_tags" {
+  description = "Tags applied to every AWS resource via the AWS provider default_tags block. Override in your varfile."
+  type        = map(string)
+  default = {
+    ManagedBy   = "terraform"
+    Project     = "port-ocean-aws"
+  }
+}
+
 variable "port_client_id" {
   description = "Port API client ID"
   type        = string
@@ -39,9 +48,10 @@ variable "port_org_slug" {
     ecs-task-execution-role-port-ocean-aws-<that_identifier>; AWS IAM role names are capped at
     64 characters, which implies len(service_name) <= 40 and, for type aws,
     len(identifier) <= 25. Prefer a short slug so the default id stays within that budget.
+    Required — set in your varfile (no default so installs are explicit).
   EOT
   type        = string
-  default     = "gossint"
+  nullable    = false
 }
 
 variable "integration_identifier" {
@@ -69,6 +79,35 @@ variable "live_events_api_key" {
   nullable    = true
 }
 
+variable "organization_role_arn" {
+  description = <<-EOT
+    Multi-account: ARN of the organization (root) delegation role (Port docs: OrganizationalOceanRole).
+    Mutually exclusive with allow_incoming_requests=true (live events are single-account only).
+    Set together with account_read_role_name.
+  EOT
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "account_read_role_name" {
+  description = <<-EOT
+    Multi-account: IAM role name (not ARN) of the read role present in each member account
+    (Port docs: ReadOnlyPermissionsOceanRole). Mutually exclusive with allow_incoming_requests=true.
+    Set together with organization_role_arn.
+  EOT
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "maximum_concurrent_accounts" {
+  description = "Multi-account: maximum number of accounts to sync concurrently. Only used when organization_role_arn and account_read_role_name are set."
+  type        = number
+  default     = null
+  nullable    = true
+}
+
 variable "event_listener_type" {
   description = "Ocean event listener type"
   type        = string
@@ -78,7 +117,7 @@ variable "event_listener_type" {
 variable "allow_incoming_requests" {
   description = <<-EOT
     If true, creates ALB + API Gateway + EventBridge for live events (single-account installations
-    per Port).
+    per Port). Cannot be true together with organization_role_arn / account_read_role_name.
   EOT
   type        = bool
   default     = false
