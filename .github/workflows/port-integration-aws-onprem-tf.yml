@@ -74,7 +74,7 @@ jobs:
       id-token: write
       contents: read
     concurrency:
-      group: port-integration-aws-${{ env.TFVAR_FILE }}
+      group: port-integration-aws-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tfvar_file || vars.TFVAR_FILE }}
       cancel-in-progress: false
     # Repository Variables (no hardcoded fallbacks): TFC_ORGANIZATION, TFC_WORKSPACE, TFC_WORKSPACE_TAGS,
     # TFVAR_FILE, AWS_REGION, AWS_ACCOUNT_ID, AWS_ROLE_NAME. workflow_dispatch can override most inputs.

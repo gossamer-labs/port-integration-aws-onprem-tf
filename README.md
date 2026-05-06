@@ -119,7 +119,7 @@ Files below cover **network bootstrap**, **CloudTrail**, the **Port Ocean** modu
 
 ### Multiple installs from one repo
 
-Use **one Terraform Cloud workspace + one varfile per install** (different **`port_org_slug`** / **`integration_identifier`** / AWS account). In GitHub Actions, set **`TFVAR_FILE`** (and **`TFC_WORKSPACE`**) per repository or use **`workflow_dispatch`** inputs **`tfvar_file`** and **`tf_workspace`** to point at the pair you want. Concurrency groups key off **`TFVAR_FILE`** so parallel installs do not cancel each other.
+Use **one Terraform Cloud workspace + one varfile per install** (different **`port_org_slug`** / **`integration_identifier`** / AWS account). In GitHub Actions, set **`TFVAR_FILE`** (and **`TFC_WORKSPACE`**) per repository or use **`workflow_dispatch`** inputs **`tfvar_file`** and **`tf_workspace`** to point at the pair you want. The **`terraform`** job’s **`concurrency.group`** uses the same **`workflow_dispatch` input vs `vars.TFVAR_FILE`** logic as the job **`env`** (GitHub does not allow **`env`** in **`concurrency.group`**, so the expression is duplicated there on purpose) so parallel installs keyed by varfile path do not cancel each other.
 
 ### Live events webhook URL (Terraform output)
 
