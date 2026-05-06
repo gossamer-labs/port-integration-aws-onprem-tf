@@ -7,8 +7,8 @@ variable "default_resource_tags" {
   description = "Tags applied to every AWS resource via the AWS provider default_tags block. Override in your varfile."
   type        = map(string)
   default = {
-    ManagedBy   = "terraform"
-    Project     = "port-ocean-aws"
+    ManagedBy = "terraform"
+    Project   = "port-ocean-aws"
   }
 }
 
