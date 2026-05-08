@@ -1,11 +1,27 @@
 # -----------------------------------------------------------------------------
 # Port Ocean integration (ECS, ALB, API Gateway, EventBridge, etc.)
-# VPC and subnet IDs are resolved here via data sources after network.tf creates
-# module.vpc (managed) or from var.network_existing_* (BYO). See variables_integration.tf.
+#
+# VPC and subnet resolution strategy (managed vs BYO):
+#
+#   Managed VPC (network_use_existing_vpc = false):
+#     vpc_id  — data.aws_vpc reads back the VPC by Name tag after module.vpc creates it.
+#               This is safe at plan time because module.vpc's VPC ID is an unknown-until-apply
+#               value; the data source is deferred accordingly.
+#     subnets — module.vpc[0].public_subnets is used DIRECTLY (not via data.aws_subnets).
+#               data.aws_subnets filters by AWS API at plan time, and on a fresh apply the
+#               subnets do not yet exist, so the filter returns [] — causing the ALB to receive
+#               fewer than 2 subnets and fail. module.vpc[0].public_subnets is a known Terraform
+#               reference that always resolves correctly within the same apply.
+#
+#   BYO VPC (network_use_existing_vpc = true):
+#     vpc_id  — data.aws_vpc reads the VPC by supplied id (no managed resource to reference).
+#     subnets — data.aws_subnet reads each supplied ID and validates it belongs to the VPC.
+#               BYO subnets already exist in AWS, so the API filter is safe at plan time.
+#
 # Secrets: TF_VAR_port_client_id, TF_VAR_port_client_secret, TF_VAR_live_events_api_key.
 # -----------------------------------------------------------------------------
 
-# Managed: resolve VPC by Name tag after module.vpc. Depends_on ensures create order.
+# Managed: resolve VPC by Name tag after module.vpc creates it.
 data "aws_vpc" "port_ocean_managed" {
   count = var.network_use_existing_vpc ? 0 : 1
 
@@ -17,30 +33,14 @@ data "aws_vpc" "port_ocean_managed" {
   depends_on = [module.vpc]
 }
 
-# BYO: read VPC directly by id.
+# BYO: read VPC directly by id (no managed resource exists to reference).
 data "aws_vpc" "port_ocean_existing" {
   count = var.network_use_existing_vpc ? 1 : 0
   id    = var.network_existing_vpc_id
 }
 
-# Managed: public subnets in the managed VPC (map-public-ip-on-launch matches default public subnet config).
-data "aws_subnets" "port_ocean_public" {
-  count = var.network_use_existing_vpc ? 0 : 1
-
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.port_ocean_managed[0].id]
-  }
-
-  filter {
-    name   = "map-public-ip-on-launch"
-    values = ["true"]
-  }
-
-  depends_on = [module.vpc, data.aws_vpc.port_ocean_managed]
-}
-
 # BYO: read each supplied subnet and validate it belongs to the configured VPC.
+# Not used for the managed path — see comment at top of file for why.
 data "aws_subnet" "port_ocean_byo" {
   for_each = var.network_use_existing_vpc ? toset(var.network_existing_subnet_ids) : toset([])
 
@@ -103,8 +103,10 @@ module "aws" {
   create_default_sg       = var.create_default_sg
   assign_public_ip        = var.assign_public_ip
 
-  # Managed: public subnets discovered by data source (sorted for stability).
-  # BYO: validated subnets from data.aws_subnet.port_ocean_byo.
+  # Managed: VPC id from data source (safe; deferred after module.vpc). Subnets from
+  # module.vpc directly — data.aws_subnets would return [] on first apply because the
+  # subnets don't yet exist when the plan runs (see comment at top of file).
+  # BYO: both VPC id and subnets from data sources (existing infra, safe at plan time).
   vpc_id = (
     var.network_use_existing_vpc
     ? data.aws_vpc.port_ocean_existing[0].id
@@ -113,7 +115,7 @@ module "aws" {
   subnets = (
     var.network_use_existing_vpc
     ? [for sid in var.network_existing_subnet_ids : data.aws_subnet.port_ocean_byo[sid].id]
-    : sort(data.aws_subnets.port_ocean_public[0].ids)
+    : module.vpc[0].public_subnets
   )
   cluster_name = var.cluster_name
 
@@ -165,6 +167,6 @@ output "network_subnet_ids_for_ecs" {
   value = (
     var.network_use_existing_vpc
     ? [for sid in var.network_existing_subnet_ids : data.aws_subnet.port_ocean_byo[sid].id]
-    : sort(data.aws_subnets.port_ocean_public[0].ids)
+    : module.vpc[0].public_subnets
   )
 }
