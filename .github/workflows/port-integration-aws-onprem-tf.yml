@@ -11,6 +11,9 @@ on:
     paths:
       - "terraform/**"
       - ".github/workflows/port-integration-aws-onprem-tf.yml"
+  # Manual runs: GitHub does not show repository Variables in the Run workflow form—only static YAML
+  # defaults (e.g. Terraform operation). Leave any string input blank to use the matching repository
+  # Variable (same resolution as push to main). Only Terraform operation must be selected.
   workflow_dispatch:
     inputs:
       mode:
@@ -23,24 +26,27 @@ on:
           - destroy
         default: plan
       tf_workspace:
-        description: Terraform Cloud workspace name (must exist or be created when not destroying)
-        required: true
+        description: "Overrides TFC_WORKSPACE when set; workspace must exist (or be creatable) when not destroying"
+        required: false
         type: string
+        default: ""
       tfvar_file:
-        description: "Path under terraform/ (e.g. varfiles/gossamer-int.tfvars)"
-        required: true
+        description: "Overrides TFVAR_FILE when set — path under terraform/ (e.g. varfiles/gossamer-int.tfvars)"
+        required: false
         type: string
+        default: ""
       aws_region:
-        description: AWS region for OIDC (must match aws_region in your varfile)
-        required: true
+        description: "Overrides AWS_REGION when set; must match aws_region in your varfile"
+        required: false
         type: string
+        default: ""
       aws_account_id:
-        description: "AWS account ID for GitHub OIDC — leave blank to use the AWS_ACCOUNT_ID repository variable"
+        description: "Overrides AWS_ACCOUNT_ID when set (OIDC role ARN account segment)"
         required: false
         type: string
         default: ""
       aws_role_name:
-        description: "IAM role name for GitHub OIDC — leave blank to use the AWS_ROLE_NAME repository variable"
+        description: "Overrides AWS_ROLE_NAME when set (IAM role name only, not full ARN)"
         required: false
         type: string
         default: ""
@@ -79,7 +85,7 @@ jobs:
       group: port-integration-aws-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tfvar_file || vars.TFVAR_FILE }}
       cancel-in-progress: false
     # Repository Variables (no hardcoded fallbacks): TFC_ORGANIZATION, TFC_WORKSPACE, TFC_WORKSPACE_TAGS,
-    # TFVAR_FILE, AWS_REGION, AWS_ACCOUNT_ID, AWS_ROLE_NAME. workflow_dispatch can override most inputs.
+    # TFVAR_FILE, AWS_REGION, AWS_ACCOUNT_ID, AWS_ROLE_NAME. workflow_dispatch strings override when non-empty.
     # Set USE_TERRAFORM_CLOUD_BACKEND=false when using S3/local backend (skips ensure-tfc-workspace; TFC_* not required).
     # Set AWS_USE_STATIC_CREDENTIALS=true to use AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY instead of OIDC.
     # Partial cloud backend: TF_CLOUD_ORGANIZATION from TFC_ORGANIZATION; TF_WORKSPACE from TFC_WORKSPACE or dispatch.
@@ -116,11 +122,12 @@ jobs:
           fi
           if [ ${#missing[@]} -ne 0 ]; then
             echo "::error::Missing or empty: ${missing[*]}"
-            echo "Set GitHub Actions repository Variables (Settings → Secrets and variables → Actions → Variables):"
+            echo "Provide each value via GitHub Actions repository Variables (Settings → Secrets and variables → Actions → Variables)"
+            echo "and/or non-empty workflow_dispatch inputs:"
             echo "  TFVAR_FILE — path under terraform/, e.g. varfiles/your-install.tfvars"
             echo "  TFC_ORGANIZATION, TFC_WORKSPACE, TFC_WORKSPACE_TAGS — when using Terraform Cloud (default)"
             echo "  AWS_REGION, AWS_ACCOUNT_ID, AWS_ROLE_NAME — for OIDC (unless AWS_USE_STATIC_CREDENTIALS=true)"
-            echo "Or use workflow_dispatch and fill all required inputs."
+            echo "Blank dispatch fields use the same repository Variables as push to main."
             exit 1
           fi
 

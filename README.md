@@ -189,18 +189,20 @@ Workflow [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workfl
 |--------|----------|
 | **Pull request** (paths `terraform/**` or this workflow) | **`terraform` job:** `terraform fmt -check`, **`terraform plan -var-file=$TFVAR_FILE`** (after **`format`** job). Same-repo PRs only (fork PRs skip Terraform; secrets/OIDC are unavailable). |
 | **Push to `main`** (same paths) | **`terraform` job:** **`terraform apply -var-file=$TFVAR_FILE`** (runs after merge to trunk). |
-| **`workflow_dispatch`** | **`format`** then **`terraform` job:** choose **plan** / **apply** / **destroy** and supply **`tf_workspace`**, **`tfvar_file`**, **`aws_region`**, **`aws_account_id`**, **`aws_role_name`** (no hardcoded defaults — set repository **Variables** for repeatability). |
+| **`workflow_dispatch`** | **`format`** then **`terraform` job:** choose **plan** / **apply** / **destroy**. Optional string inputs (**`tf_workspace`**, **`tfvar_file`**, **`aws_region`**, **`aws_account_id`**, **`aws_role_name`**) override repository **Variables** when non-empty; leave them blank to use the same **Variables** as **push to `main`**. |
 
-A **Validate inputs** step fails fast if required repository **Variables** are missing (or dispatch inputs left empty). **`TF_CLOUD_ORGANIZATION`** is injected from **`TFC_ORGANIZATION`** for partial **`cloud {}`**.
+Manual **Run workflow** never pre-fills the form from repository **Variables** (GitHub limitation); set **Variables** once, then use dispatch with only **Terraform operation** changed when you want the same install.
+
+A **Validate inputs** step fails fast if a required value is missing **after** resolving dispatch inputs and repository **Variables** (each value must be set in at least one place). **`TF_CLOUD_ORGANIZATION`** is injected from **`TFC_ORGANIZATION`** for partial **`cloud {}`**.
 
 When repository variable **`USE_TERRAFORM_CLOUD_BACKEND`** is unset or not **`false`**, [**`ensure-tfc-workspace`**](.github/actions/ensure-tfc-workspace/action.yml) runs before **`terraform init`** (for **plan**/**apply**, creates the workspace when missing; **destroy** requires an existing workspace unless you use a non-TFC backend). Passes **`organization: vars.TFC_ORGANIZATION`** and **`workspace_tags: vars.TFC_WORKSPACE_TAGS`**. Set **`USE_TERRAFORM_CLOUD_BACKEND=false`** after switching [`terraform.tf`](terraform/terraform.tf) to S3/local backend so this step is skipped.
 
 ### GitHub Actions: OIDC vs static AWS credentials
 
-- **OIDC (default):** the workflow assumes **`arn:aws:iam::<AWS_ACCOUNT_ID>:role/<AWS_ROLE_NAME>`**, built from repository variables **`AWS_ACCOUNT_ID`** and **`AWS_ROLE_NAME`**, or from **`workflow_dispatch`** inputs. **There are no baked-in account/role defaults** — set **Variables** on the repository (or fill every dispatch input). Ensure your IAM role trust policy allows this repository — see [**CI: AssumeRoleWithWebIdentity**](#ci-assumerolewithwebidentity--oidc-denied).
+- **OIDC (default):** the workflow assumes **`arn:aws:iam::<AWS_ACCOUNT_ID>:role/<AWS_ROLE_NAME>`**, built from repository **Variables** **`AWS_ACCOUNT_ID`** and **`AWS_ROLE_NAME`**, with optional **`workflow_dispatch`** overrides when those inputs are non-empty. **There are no baked-in account/role defaults** — set **Variables** and/or dispatch inputs. Ensure your IAM role trust policy allows this repository — see [**CI: AssumeRoleWithWebIdentity**](#ci-assumerolewithwebidentity--oidc-denied).
 - **Static keys:** set repository variable **`AWS_USE_STATIC_CREDENTIALS`** to **`true`** and add secrets **`AWS_ACCESS_KEY_ID`** and **`AWS_SECRET_ACCESS_KEY`**. The OIDC steps are skipped; use least-privilege IAM users and rotate keys regularly.
 
-**Repository variables** (Settings → Secrets and variables → Actions → **Variables** — **required** for PR / `main` unless you only use **`workflow_dispatch`** with every field filled)
+**Repository variables** (Settings → Secrets and variables → Actions → **Variables** — **required** for PR / **`main`**; for **`workflow_dispatch`**, blank string inputs use these same **Variables**)
 
 | Variable | Purpose |
 |----------|---------|
@@ -227,7 +229,7 @@ When repository variable **`USE_TERRAFORM_CLOUD_BACKEND`** is unset or not **`fa
 
 If **`PORT_LIVE_EVENTS_API_KEY`** is missing or empty in GitHub Actions, **`TF_VAR_live_events_api_key`** is not set. Terraform then passes **`integration.config` without `live_events_api_key`** (see [`main.tf`](terraform/main.tf)) even though **`allow_incoming_requests = true`** — **`terraform plan` / `apply` may still succeed**, but live-events webhook validation is **not** configured. Always define **`PORT_LIVE_EVENTS_API_KEY`** for CI when using live events.
 
-**Dispatch** can override **`TF_WORKSPACE`** via **`tf_workspace`** and **`TFVAR_FILE`** via **`tfvar_file`**. **PR / `main`** read **`vars.TFC_WORKSPACE`**, **`vars.TFVAR_FILE`**, and the AWS/TFC variables above — there are **no** workflow fallbacks if they are unset (the validate step fails). Keep **`aws_region`** in your varfile aligned with **`AWS_REGION`**.
+**Dispatch** can override **`TF_WORKSPACE`**, **`TFVAR_FILE`**, **`AWS_REGION`**, **`AWS_ACCOUNT_ID`**, and **`AWS_ROLE_NAME`** when the corresponding inputs are non-empty. **PR / `main`** read **`vars.TFC_WORKSPACE`**, **`vars.TFVAR_FILE`**, and the AWS/TFC variables above — there are **no** workflow fallbacks if they are unset (the validate step fails). Keep **`aws_region`** in your varfile aligned with **`AWS_REGION`**.
 
 **Apply on `main`:** any **push** to **`main`** that matches the path filter runs **apply** (including direct pushes, not only merges). Restrict merges via branch protection if needed.
 
@@ -264,7 +266,7 @@ Remove AWS resources created by this Terraform configuration, then clean up Port
 
 ### AWS — `terraform destroy`
 
-1. Run the workflow [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workflows/port-integration-aws-onprem-tf.yml) via **`workflow_dispatch`** with **`mode: destroy`**. Use the same **`tf_workspace`**, **`tfvar_file`**, **`aws_region`**, **`aws_account_id`**, and **`aws_role_name`** inputs (or repository **Variables**) you use for apply.
+1. Run the workflow [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workflows/port-integration-aws-onprem-tf.yml) via **`workflow_dispatch`** with **`mode: destroy`**. Leave optional inputs blank to reuse repository **Variables** from apply, or set the same non-empty overrides you use for apply.
 2. With **Terraform Cloud** remote state, **`ensure-tfc-workspace`** runs unless **`USE_TERRAFORM_CLOUD_BACKEND=false`**; destroy expects the workspace to exist in that path. If you use **S3 or local** state and **`USE_TERRAFORM_CLOUD_BACKEND=false`**, CI skips workspace ensure but still runs **`terraform destroy`** when dispatching destroy—see [Greenfield vs bring-your-own infrastructure](#greenfield-vs-bring-your-own-infrastructure) and [GitHub Actions](#github-actions).
 3. If **`terraform destroy`** fails because **S3 will not delete a bucket that still has contents** (common error: bucket not empty), fix the bucket and **re-run destroy** until it completes:
    - **Managed CloudTrail log bucket** (when this stack created CloudTrail for live events): the bucket name follows **`{cloudtrail_name_prefix}-cloudtrail-logs-<aws_account_id>`** (see [Live events prerequisites](#live-events-prerequisites-cloudtrail)). While the stack still exists, **`terraform output cloudtrail_log_bucket_name`** shows the exact name. This repo enables **S3 versioning** on that bucket, so you must remove **current objects, all versions, and delete markers**—use the S3 console **Empty** action (including versions), or equivalent CLI/API—then run **`terraform destroy`** again. Often the first **`destroy`** already removes the trail and policies; if it stops on **`aws_s3_bucket`**, empty the bucket and re-run.
