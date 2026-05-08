@@ -22,7 +22,7 @@ cluster_name = "port-ocean-aws-exporter"
 
 # Tags on every AWS resource (override as needed).
 # default_resource_tags = {
-#   Environment = "production"
+#   Environment = "<your-environment-name>"
 #   ManagedBy   = "terraform"
 #   Project     = "port-ocean-aws"
 #   Repository  = "<your-repo-or-project-id>"
@@ -53,6 +53,9 @@ assign_public_ip             = true
 # ============================================================
 allow_incoming_requests = true
 cloudtrail_enabled      = true
+
+# EKS extension rules (live_event_resources.tf) use a data lookup for the API Gateway webhook
+# target; set TF_VAR_live_events_api_key. Optional: port_ocean_rest_api_name if you fork upstream.
 
 # Do not set organization_role_arn / account_read_role_name in Mode A (Terraform will error).
 

@@ -79,6 +79,17 @@ variable "live_events_api_key" {
   nullable    = true
 }
 
+variable "port_ocean_rest_api_name" {
+  description = <<-EOT
+    Name of the API Gateway REST API created by the Port Ocean module (default matches upstream
+    aws_helpers/api_gateway). Override only if you fork upstream and change rest_api_name.
+    Used by live_event_resources.tf to data-source the EventBridge webhook target ARN.
+  EOT
+  type        = string
+  default     = "port-ocean-aws-exporter"
+  nullable    = false
+}
+
 variable "organization_role_arn" {
   description = <<-EOT
     Multi-account: ARN of the organization (root) delegation role (Port docs: OrganizationalOceanRole).

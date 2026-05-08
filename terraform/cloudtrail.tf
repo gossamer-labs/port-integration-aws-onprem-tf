@@ -7,9 +7,6 @@
 # An active trail logging management events publishes `AWS API Call via CloudTrail` to the
 # default event bus (see AWS EventBridge docs). Event history alone does not replace a trail.
 
-data "aws_caller_identity" "current" {}
-data "aws_partition" "current" {}
-
 locals {
   cloudtrail_should_create         = var.allow_incoming_requests && var.cloudtrail_enabled
   cloudtrail_managed_bucket        = local.cloudtrail_should_create && var.cloudtrail_existing_log_bucket_name == null
@@ -203,4 +200,19 @@ resource "aws_cloudtrail" "port_live_events" {
   }
 
   depends_on = [aws_s3_bucket_policy.cloudtrail_logs]
+}
+
+output "cloudtrail_name" {
+  description = "CloudTrail trail name when live events + CloudTrail are enabled; null otherwise"
+  value       = length(aws_cloudtrail.port_live_events) > 0 ? aws_cloudtrail.port_live_events[0].id : null
+}
+
+output "cloudtrail_arn" {
+  description = "CloudTrail trail ARN when provisioned; null otherwise"
+  value       = length(aws_cloudtrail.port_live_events) > 0 ? aws_cloudtrail.port_live_events[0].arn : null
+}
+
+output "cloudtrail_log_bucket_name" {
+  description = "S3 bucket receiving CloudTrail logs when provisioned; null otherwise"
+  value       = length(aws_cloudtrail.port_live_events) > 0 ? aws_cloudtrail.port_live_events[0].s3_bucket_name : null
 }

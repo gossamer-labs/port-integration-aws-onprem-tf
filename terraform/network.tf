@@ -1,8 +1,7 @@
 # -----------------------------------------------------------------------------
-# Optional network bootstrap for greenfield accounts.
-# Creates module.vpc unless network_use_existing_vpc is true; see locals.vpc_id_for_port
-# and subnets_for_port in network.tf, wired into module "aws" in main.tf.
-# Bring your own VPC: set network_use_existing_vpc and existing_* in variables_network.tf (README).
+# Network: optional VPC bootstrap (greenfield).
+# Vars drive VPC creation only; integration.tf resolves VPC/subnet IDs for module.aws.
+# Bring your own VPC: network_use_existing_vpc and existing_* in variables_network.tf (README).
 # -----------------------------------------------------------------------------
 data "aws_availability_zones" "available" {
   filter {
@@ -55,9 +54,7 @@ module "vpc" {
   private_subnet_tags = {}
 }
 
-locals {
-  vpc_id_for_port = var.network_use_existing_vpc ? var.network_existing_vpc_id : module.vpc[0].vpc_id
-
-  # ECS tasks run in public subnets when using the bundled VPC (no NAT). For existing VPC, supply subnets you choose.
-  subnets_for_port = var.network_use_existing_vpc ? var.network_existing_subnet_ids : module.vpc[0].public_subnets
+output "network_create_mode" {
+  description = "Whether this stack created the VPC or uses an existing one"
+  value       = var.network_use_existing_vpc ? "existing_vpc" : "managed_vpc"
 }
