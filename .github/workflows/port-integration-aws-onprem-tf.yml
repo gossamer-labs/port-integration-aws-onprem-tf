@@ -35,13 +35,15 @@ on:
         required: true
         type: string
       aws_account_id:
-        description: "AWS account ID for GitHub OIDC (arn:aws:iam::<id>:role/<name>)"
-        required: true
+        description: "AWS account ID for GitHub OIDC — leave blank to use the AWS_ACCOUNT_ID repository variable"
+        required: false
         type: string
+        default: ""
       aws_role_name:
-        description: "IAM role name for GitHub OIDC (not full ARN)"
-        required: true
+        description: "IAM role name for GitHub OIDC — leave blank to use the AWS_ROLE_NAME repository variable"
+        required: false
         type: string
+        default: ""
 
 permissions:
   contents: read
