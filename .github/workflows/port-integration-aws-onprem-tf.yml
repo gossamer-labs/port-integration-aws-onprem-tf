@@ -26,12 +26,16 @@ on:
           - destroy
         default: plan
       tf_workspace:
-        description: "Overrides TFC_WORKSPACE when set; workspace must exist (or be creatable) when not destroying"
+        description: >-
+          Overrides TFC_WORKSPACE when set; workspace must exist (or be
+          creatable) when not destroying
         required: false
         type: string
         default: ""
       tfvar_file:
-        description: "Overrides TFVAR_FILE when set — path under terraform/ (copy from varfiles/example.tfvars, e.g. varfiles/mystack.tfvars)"
+        description: >-
+          Overrides TFVAR_FILE when set — path under terraform/ (copy from
+          varfiles/example.tfvars, e.g. varfiles/mystack.tfvars)
         required: false
         type: string
         default: ""
@@ -82,7 +86,9 @@ jobs:
       id-token: write
       contents: read
     concurrency:
-      group: port-integration-aws-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tfvar_file || vars.TFVAR_FILE }}
+      group: >-
+        port-integration-aws-${{ github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.tfvar_file || vars.TFVAR_FILE }}
       cancel-in-progress: false
     # Repository Variables (no hardcoded fallbacks): TFC_ORGANIZATION, TFC_WORKSPACE, TFC_WORKSPACE_TAGS,
     # TFVAR_FILE, AWS_REGION, AWS_ACCOUNT_ID, AWS_ROLE_NAME. workflow_dispatch strings override when non-empty.
@@ -90,13 +96,36 @@ jobs:
     # Set AWS_USE_STATIC_CREDENTIALS=true to use AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY instead of OIDC.
     # Partial cloud backend: TF_CLOUD_ORGANIZATION from TFC_ORGANIZATION; TF_WORKSPACE from TFC_WORKSPACE or dispatch.
     env:
-      TF_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || (github.event_name == 'pull_request' && 'plan' || github.event_name == 'push' && 'apply') }}
-      TF_WORKSPACE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace || vars.TFC_WORKSPACE }}
-      TFVAR_FILE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tfvar_file || vars.TFVAR_FILE }}
-      AWS_REGION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_region || vars.AWS_REGION }}
-      AWS_ACCOUNT_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_account_id || vars.AWS_ACCOUNT_ID }}
-      AWS_ROLE_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_role_name || vars.AWS_ROLE_NAME }}
-      TF_AWS_ROLE_ARN: ${{ format('arn:aws:iam::{0}:role/{1}', github.event_name == 'workflow_dispatch' && github.event.inputs.aws_account_id || vars.AWS_ACCOUNT_ID, github.event_name == 'workflow_dispatch' && github.event.inputs.aws_role_name || vars.AWS_ROLE_NAME) }}
+      TF_MODE: >-
+        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode ||
+        (github.event_name == 'pull_request' && 'plan' ||
+          github.event_name == 'push' && 'apply') }}
+      TF_WORKSPACE: >-
+        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace ||
+          vars.TFC_WORKSPACE }}
+      TFVAR_FILE: >-
+        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tfvar_file ||
+          vars.TFVAR_FILE }}
+      AWS_REGION: >-
+        ${{ github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.aws_region ||
+          vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: >-
+        ${{ github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.aws_account_id ||
+          vars.AWS_ACCOUNT_ID }}
+      AWS_ROLE_NAME: >-
+        ${{ github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.aws_role_name ||
+          vars.AWS_ROLE_NAME }}
+      TF_AWS_ROLE_ARN: >-
+        ${{ format('arn:aws:iam::{0}:role/{1}',
+            github.event_name == 'workflow_dispatch' &&
+              github.event.inputs.aws_account_id ||
+              vars.AWS_ACCOUNT_ID,
+            github.event_name == 'workflow_dispatch' &&
+              github.event.inputs.aws_role_name ||
+              vars.AWS_ROLE_NAME) }}
       TF_CLOUD_ORGANIZATION: ${{ vars.TFC_ORGANIZATION }}
       TF_VAR_port_client_id: ${{ secrets.PORT_CLIENT_ID }}
       TF_VAR_port_client_secret: ${{ secrets.PORT_CLIENT_SECRET }}
@@ -122,7 +151,8 @@ jobs:
           fi
           if [ ${#missing[@]} -ne 0 ]; then
             echo "::error::Missing or empty: ${missing[*]}"
-            echo "Provide each value via GitHub Actions repository Variables (Settings → Secrets and variables → Actions → Variables)"
+            echo "Provide each value via GitHub Actions repository Variables"
+            echo "(Settings → Secrets and variables → Actions → Variables)"
             echo "and/or non-empty workflow_dispatch inputs:"
             echo "  TFVAR_FILE — path under terraform/, e.g. varfiles/your-install.tfvars"
             echo "  TFC_ORGANIZATION, TFC_WORKSPACE, TFC_WORKSPACE_TAGS — when using Terraform Cloud (default)"
@@ -135,7 +165,9 @@ jobs:
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.14.5
-          cli_config_credentials_token: ${{ vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' && secrets.TF_API_TOKEN || '' }}
+          cli_config_credentials_token: >-
+            ${{ vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' &&
+              secrets.TF_API_TOKEN || '' }}
 
       - name: Configure AWS credentials (OIDC)
         if: ${{ vars.AWS_USE_STATIC_CREDENTIALS != 'true' }}
@@ -162,10 +194,18 @@ jobs:
           workspace_name: ${{ env.TF_WORKSPACE }}
           workspace_tags: ${{ vars.TFC_WORKSPACE_TAGS }}
           execution_mode: local
-          create_if_missing: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.mode != 'destroy' }}
+          create_if_missing: >-
+            ${{ github.event_name != 'workflow_dispatch' ||
+              github.event.inputs.mode != 'destroy' }}
 
       - name: Terraform init
-        if: ${{ env.TF_MODE == 'plan' || env.TF_MODE == 'apply' || (env.TF_MODE == 'destroy' && (vars.USE_TERRAFORM_CLOUD_BACKEND == 'false' || (vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' && steps.ensure_workspace.outputs.workspace_exists == 'true'))) }}
+        if: >-
+          ${{ env.TF_MODE == 'plan' || env.TF_MODE == 'apply' ||
+            (env.TF_MODE == 'destroy' && (
+              vars.USE_TERRAFORM_CLOUD_BACKEND == 'false' ||
+              vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' &&
+                steps.ensure_workspace.outputs.workspace_exists == 'true'
+            )) }}
         working-directory: terraform
         run: terraform init -input=false
 
@@ -185,6 +225,11 @@ jobs:
         run: terraform apply -auto-approve -input=false -var-file="$TFVAR_FILE"
 
       - name: Terraform destroy
-        if: ${{ env.TF_MODE == 'destroy' && (vars.USE_TERRAFORM_CLOUD_BACKEND == 'false' || (vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' && steps.ensure_workspace.outputs.workspace_exists == 'true')) }}
+        if: >-
+          ${{ env.TF_MODE == 'destroy' && (
+              vars.USE_TERRAFORM_CLOUD_BACKEND == 'false' ||
+              vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' &&
+                steps.ensure_workspace.outputs.workspace_exists == 'true'
+            ) }}
         working-directory: terraform
         run: terraform destroy -auto-approve -input=false -var-file="$TFVAR_FILE"
