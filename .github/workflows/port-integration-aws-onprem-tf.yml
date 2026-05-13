@@ -107,24 +107,19 @@ jobs:
         ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tfvar_file ||
           vars.TFVAR_FILE }}
       AWS_REGION: >-
-        ${{ github.event_name == 'workflow_dispatch' &&
-          github.event.inputs.aws_region ||
+        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_region ||
           vars.AWS_REGION }}
       AWS_ACCOUNT_ID: >-
-        ${{ github.event_name == 'workflow_dispatch' &&
-          github.event.inputs.aws_account_id ||
+        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_account_id ||
           vars.AWS_ACCOUNT_ID }}
       AWS_ROLE_NAME: >-
-        ${{ github.event_name == 'workflow_dispatch' &&
-          github.event.inputs.aws_role_name ||
+        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_role_name ||
           vars.AWS_ROLE_NAME }}
       TF_AWS_ROLE_ARN: >-
         ${{ format('arn:aws:iam::{0}:role/{1}',
-            github.event_name == 'workflow_dispatch' &&
-              github.event.inputs.aws_account_id ||
+            github.event_name == 'workflow_dispatch' && github.event.inputs.aws_account_id ||
               vars.AWS_ACCOUNT_ID,
-            github.event_name == 'workflow_dispatch' &&
-              github.event.inputs.aws_role_name ||
+            github.event_name == 'workflow_dispatch' && github.event.inputs.aws_role_name ||
               vars.AWS_ROLE_NAME) }}
       TF_CLOUD_ORGANIZATION: ${{ vars.TFC_ORGANIZATION }}
       TF_VAR_port_client_id: ${{ secrets.PORT_CLIENT_ID }}
