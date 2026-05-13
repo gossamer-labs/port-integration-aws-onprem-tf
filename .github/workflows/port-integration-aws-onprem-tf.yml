@@ -31,7 +31,7 @@ on:
         type: string
         default: ""
       tfvar_file:
-        description: "Overrides TFVAR_FILE when set — path under terraform/ (e.g. varfiles/gossamer-int.tfvars)"
+        description: "Overrides TFVAR_FILE when set — path under terraform/ (copy from varfiles/example.tfvars, e.g. varfiles/mystack.tfvars)"
         required: false
         type: string
         default: ""

@@ -4,7 +4,7 @@ Port **AWS** integration on **ECS** with **Terraform**, **Terraform Cloud** remo
 
 Configuration lives under [`terraform/`](terraform/). The stack **creates a small VPC** by default (see [`network.tf`](terraform/network.tf), [`variables_network.tf`](terraform/variables_network.tf)) so you can deploy without hand-picking subnet IDs. To attach to an **existing** VPC later, set `network_use_existing_vpc = true` and fill `network_existing_vpc_id` / `network_existing_subnet_ids`.
 
-[`terraform/varfiles/`](terraform/varfiles/) holds **per-install** `*.tfvars` (for example [`varfiles/gossamer-int.tfvars`](terraform/varfiles/gossamer-int.tfvars) for one internal stack). Pass **`-var-file=varfiles/<name>.tfvars`** on every `plan` / `apply` / `destroy` — there is no auto-loaded root `terraform.tfvars`. A template for new customers is [`varfiles/example.tfvars`](terraform/varfiles/example.tfvars).
+[`terraform/varfiles/`](terraform/varfiles/) holds **per-install** `*.tfvars`. Copy [`terraform/varfiles/example.tfvars`](terraform/varfiles/example.tfvars) to **`varfiles/<your-install>.tfvars`**, edit values (including **`aws_region`**), and pass **`-var-file=varfiles/<your-install>.tfvars`** on every `plan` / `apply` / `destroy` — there is no auto-loaded root `terraform.tfvars`.
 
 **Live events vs multi-account:** Per [Port live events](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/live-events), live events are **single-account only**. This repo enforces that at plan time: **`allow_incoming_requests = true`** cannot be combined with **`organization_role_arn`** / **`account_read_role_name`**. For [multi-account](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/multi_account), set **`allow_incoming_requests = false`** and supply both role knobs (see `example.tfvars` Mode B).
 
@@ -111,7 +111,7 @@ Files below cover **network bootstrap**, **CloudTrail**, the **Port Ocean** modu
 | [`variables_network.tf`](terraform/variables_network.tf) | VPC / subnets (`network_*`), `aws_region` |
 | [`variables_cloudtrail.tf`](terraform/variables_cloudtrail.tf) | CloudTrail + log bucket (`cloudtrail_*`), gated with live events |
 | [`variables_integration.tf`](terraform/variables_integration.tf) | Port Ocean module inputs (`port_*`, **`port_org_slug`**, multi-account knobs, **`default_resource_tags`**, ECS) |
-| [`varfiles/`](terraform/varfiles/) | Per-install **`*.tfvars`** (e.g. **`example.tfvars`** template, your **`gossamer-int.tfvars`**). Pass **`-var-file=varfiles/<name>.tfvars`**. Optional gitignored overlays: **`varfiles/*.local.tfvars`**. |
+| [`varfiles/`](terraform/varfiles/) | Per-install **`*.tfvars`** (start from [`example.tfvars`](terraform/varfiles/example.tfvars)). Pass **`-var-file=varfiles/<name>.tfvars`**. Optional gitignored overlays: **`varfiles/*.local.tfvars`**. |
 | [`network.tf`](terraform/network.tf) | `terraform-aws-modules/vpc` (**v5.x**); **`data.aws_vpc`** / **`data.aws_subnets`** (managed) or **`data.aws_subnet`** (BYO) resolve IDs for **`module.aws`**. See [Network discovery](#network-discovery-data-sources). |
 | [`cloudtrail.tf`](terraform/cloudtrail.tf) | Account CloudTrail + optional managed S3 log bucket (when live events on) |
 | [`main.tf`](terraform/main.tf) | `module "aws"` — Port [`aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app); config validation via **`terraform_data.integration_config_validation`**; explicit **`depends_on`** network data sources |
@@ -210,7 +210,7 @@ When repository variable **`USE_TERRAFORM_CLOUD_BACKEND`** is unset or not **`fa
 | **`TFC_ORGANIZATION`** | Terraform Cloud **organization** name (feeds **`TF_CLOUD_ORGANIZATION`** in the workflow and **`ensure-tfc-workspace`**). Not required when **`USE_TERRAFORM_CLOUD_BACKEND=false`**. |
 | **`TFC_WORKSPACE`** | Terraform Cloud **workspace name** (feeds **`TF_WORKSPACE`**). |
 | **`TFC_WORKSPACE_TAGS`** | Comma-separated tags **`ensure-tfc-workspace`** applies to the workspace (e.g. a single tag used to group installs). |
-| **`TFVAR_FILE`** | Path under **`terraform/`** to the varfile (e.g. **`varfiles/gossamer-int.tfvars`**). Passed as **`-var-file=$TFVAR_FILE`**. |
+| **`TFVAR_FILE`** | Path under **`terraform/`** to your install varfile (copy from [`example.tfvars`](terraform/varfiles/example.tfvars), e.g. **`varfiles/mystack.tfvars`**). Passed as **`-var-file=$TFVAR_FILE`**. |
 | **`AWS_REGION`** | AWS region for **`configure-aws-credentials`**. Must match **`aws_region`** in your varfile. |
 | **`AWS_ACCOUNT_ID`** | AWS account ID for the OIDC role ARN **`arn:aws:iam::<id>:role/<name>`**. |
 | **`AWS_ROLE_NAME`** | IAM role **name** for GitHub OIDC. |
@@ -294,7 +294,7 @@ cd terraform
 export TF_CLOUD_ORGANIZATION="<your-terraform-cloud-org>"
 export TF_WORKSPACE="<your-tfc-workspace-name>"
 export TFVAR_FILE="varfiles/<your-install>.tfvars"
-export AWS_DEFAULT_REGION=us-east-2   # same value as aws_region in your varfile
+export AWS_DEFAULT_REGION="<same-as-aws_region-in-your-varfile>"   # see terraform/varfiles/example.tfvars
 export TF_VAR_port_client_id="..."
 export TF_VAR_port_client_secret="..."
 export TF_VAR_live_events_api_key="..."   # same random secret as in CI / openssl rand -hex 32
