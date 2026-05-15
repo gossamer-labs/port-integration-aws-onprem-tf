@@ -182,7 +182,7 @@ jobs:
       - name: Ensure Terraform Cloud workspace
         id: ensure_workspace
         if: ${{ vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' }}
-        uses: ./.github/actions/ensure-tfc-workspace
+        uses: gossamer-labs/gha-ensure-tfc-workspace@c466a68766c8f7680e37b41960b8143d2e7d9a83  # v1.0.0
         with:
           tfc_token: ${{ secrets.TF_API_TOKEN }}
           organization: ${{ vars.TFC_ORGANIZATION }}
