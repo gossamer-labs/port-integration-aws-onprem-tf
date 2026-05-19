@@ -191,6 +191,8 @@ Workflow [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workfl
 | **Push to `main`** (same paths) | **`terraform` job:** **`terraform apply -var-file=$TFVAR_FILE`** (runs after merge to trunk). |
 | **`workflow_dispatch`** | **`format`** then **`terraform` job:** choose **plan** / **apply** / **destroy**. Optional string inputs (**`tf_workspace`**, **`tfvar_file`**, **`aws_region`**, **`aws_account_id`**, **`aws_role_name`**) override repository **Variables** when non-empty; leave them blank to use the same **Variables** as **push to `main`**. |
 
+Before opening a PR that changes files under `terraform/`, run `terraform fmt -recursive` from the `terraform/` directory so the CI **format** check passes.
+
 Manual **Run workflow** never pre-fills the form from repository **Variables** (GitHub limitation); set **Variables** once, then use dispatch with only **Terraform operation** changed when you want the same install.
 
 A **Validate inputs** step fails fast if a required value is missing **after** resolving dispatch inputs and repository **Variables** (each value must be set in at least one place). **`TF_CLOUD_ORGANIZATION`** is injected from **`TFC_ORGANIZATION`** for partial **`cloud {}`**.

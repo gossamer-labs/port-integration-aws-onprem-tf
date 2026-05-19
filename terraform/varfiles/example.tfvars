@@ -70,8 +70,8 @@ network_vpc_cidr             = "10.48.0.0/16"
 network_public_subnet_cidrs  = ["10.48.0.0/24", "10.48.1.0/24"]
 network_private_subnet_cidrs = [] # non-empty requires network_enable_nat_gateway = true
 
-network_enable_nat_gateway   = false
-network_single_nat_gateway   = true # when NAT is on: one NAT for all AZs (cheaper) vs one per AZ
+network_enable_nat_gateway = false
+network_single_nat_gateway = true # when NAT is on: one NAT for all AZs (cheaper) vs one per AZ
 
 # Extra tags merged into the VPC module (optional).
 # network_tags = {
