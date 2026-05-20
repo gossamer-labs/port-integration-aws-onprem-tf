@@ -87,7 +87,7 @@ port_org_slug = "<port-org-slug>" # Keep slug short so IAM role names stay <= 64
 # port_client_secret - unset here; use PORT_CLIENT_SECRET (CI) or TF_VAR_port_client_secret (local).
 
 # Scheduled Port sync listener — not a substitute for live events (Path 1). Typically POLLING; see Port Ocean docs.
-event_listener_type = "POLLING"
+event_listener_type       = "POLLING"
 scheduled_resync_interval = 1440
 
 cluster_name = "port-ocean-aws-exporter"
