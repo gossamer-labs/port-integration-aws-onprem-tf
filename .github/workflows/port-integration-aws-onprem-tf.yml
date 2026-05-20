@@ -1,5 +1,36 @@
 name: port-integration-aws-onprem-tf
 
+# -----------------------------------------------------------------------------
+# ENVIRONMENT rules (invariants):
+#   1. ENVIRONMENT is set by the pipeline only — never a GitHub variable.
+#   2. pull_request → integration; push to main → production.
+#   3. workflow_dispatch → required input (no default).
+#   4. ENVIRONMENT must match: GitHub Actions environment name,
+#      terraform/environments/<name>.tfvars, and TFC workspace suffix
+#      ($TFC_WORKSPACE_SLUG-$ENVIRONMENT).
+#   5. Production deploy gate: GitHub environment protection on `production`
+#      (restrict to main) — not enforced in this YAML.
+#
+# Per-environment config: GitHub → Settings → Environments → <name>
+#   Variables: TFC_ORGANIZATION, TFC_WORKSPACE_SLUG, TFC_WORKSPACE_TAGS,
+#              AWS_REGION, AWS_ACCOUNT_ID, AWS_ROLE_NAME, PORT_CLIENT_ID
+#   Secrets: TF_API_TOKEN, PORT_CLIENT_SECRET, PORT_LIVE_EVENTS_API_KEY
+#            (+ AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY if static creds)
+#
+# Pipeline defaults (workflow env — edit in this file, not GitHub variables):
+#   TERRAFORM_VERSION — Terraform CLI for hashicorp/setup-terraform (default 1.14.5;
+#                       must satisfy terraform/terraform.tf required_version)
+#
+# Architectural flags (terraform job env — not GitHub variables):
+#   USE_TERRAFORM_CLOUD_BACKEND — where Terraform state lives (TFC vs S3/local)
+#   USE_AWS_STATIC_CREDENTIALS  — OIDC vs static AWS keys (independent of backend)
+# Valid combinations:
+#   TFC=true  + static=false → TFC state, OIDC (default)
+#   TFC=true  + static=true  → TFC state, static keys
+#   TFC=false + static=false → S3/local state, OIDC
+#   TFC=false + static=true  → S3/local state, static keys
+# -----------------------------------------------------------------------------
+
 on:
   pull_request:
     paths:
@@ -11,11 +42,18 @@ on:
     paths:
       - "terraform/**"
       - ".github/workflows/port-integration-aws-onprem-tf.yml"
-  # Manual runs: GitHub does not show repository Variables in the Run workflow form—only static YAML
-  # defaults (e.g. Terraform operation). Leave any string input blank to use the matching repository
-  # Variable (same resolution as push to main). Only Terraform operation must be selected.
   workflow_dispatch:
     inputs:
+      environment:
+        description: >-
+          Target environment — must match a GitHub Actions environment,
+          terraform/environments/<name>.tfvars, and TFC workspace suffix.
+          No default: explicit selection required.
+        required: true
+        type: choice
+        options:
+          - integration
+          - production
       mode:
         description: "Terraform operation"
         required: true
@@ -27,15 +65,15 @@ on:
         default: plan
       tf_workspace:
         description: >-
-          Overrides TFC_WORKSPACE when set; workspace must exist (or be
-          creatable) when not destroying
+          Optional full Terraform Cloud workspace name override (bypasses
+          TFC_WORKSPACE_SLUG-$ENVIRONMENT convention)
         required: false
         type: string
         default: ""
       tfvar_file:
         description: >-
-          Overrides TFVAR_FILE when set — path under terraform/ (copy from
-          varfiles/example.tfvars, e.g. varfiles/mystack.tfvars)
+          Optional varfile path override under terraform/ (default:
+          environments/$ENVIRONMENT.tfvars)
         required: false
         type: string
         default: ""
@@ -58,6 +96,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Terraform CLI for format + plan/apply/destroy.
+  TERRAFORM_VERSION: "1.14.5"
+
 jobs:
   format:
     runs-on: ubuntu-latest
@@ -68,7 +110,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.14.5
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
           terraform_wrapper: false
 
       - name: Terraform format
@@ -82,30 +124,31 @@ jobs:
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
+    # ENVIRONMENT drives GitHub Actions environment (secrets/vars) AND
+    # terraform/environments/$ENVIRONMENT.tfvars — keep both expressions identical.
+    environment: >-
+      ${{ github.event_name == 'workflow_dispatch' && inputs.environment ||
+          github.ref == 'refs/heads/main' && 'production' || 'integration' }}
     permissions:
       id-token: write
       contents: read
     concurrency:
       group: >-
-        port-integration-aws-${{ github.event_name == 'workflow_dispatch' &&
-          github.event.inputs.tfvar_file || vars.TFVAR_FILE }}
+        port-integration-aws-${{ github.event_name == 'workflow_dispatch' && inputs.environment ||
+          github.ref == 'refs/heads/main' && 'production' || 'integration' }}
       cancel-in-progress: false
-    # Repository Variables (no hardcoded fallbacks): TFC_ORGANIZATION, TFC_WORKSPACE, TFC_WORKSPACE_TAGS,
-    # TFVAR_FILE, AWS_REGION, AWS_ACCOUNT_ID, AWS_ROLE_NAME. workflow_dispatch strings override when non-empty.
-    # Set USE_TERRAFORM_CLOUD_BACKEND=false when using S3/local backend (skips ensure-tfc-workspace; TFC_* not required).
-    # Set AWS_USE_STATIC_CREDENTIALS=true to use AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY instead of OIDC.
-    # Partial cloud backend: TF_CLOUD_ORGANIZATION from TFC_ORGANIZATION; TF_WORKSPACE from TFC_WORKSPACE or dispatch.
     env:
+      ENVIRONMENT: >-
+        ${{ github.event_name == 'workflow_dispatch' && inputs.environment ||
+            github.ref == 'refs/heads/main' && 'production' || 'integration' }}
+      # --- Backend: where Terraform state is stored (all environments) ---
+      USE_TERRAFORM_CLOUD_BACKEND: "true"
+      # --- AWS auth: OIDC (false) vs static key/secret (true) — independent of backend ---
+      USE_AWS_STATIC_CREDENTIALS: "false"
       TF_MODE: >-
         ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode ||
         (github.event_name == 'pull_request' && 'plan' ||
           github.event_name == 'push' && 'apply') }}
-      TF_WORKSPACE: >-
-        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tf_workspace ||
-          vars.TFC_WORKSPACE }}
-      TFVAR_FILE: >-
-        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tfvar_file ||
-          vars.TFVAR_FILE }}
       AWS_REGION: >-
         ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_region ||
           vars.AWS_REGION }}
@@ -122,57 +165,73 @@ jobs:
             github.event_name == 'workflow_dispatch' && github.event.inputs.aws_role_name ||
               vars.AWS_ROLE_NAME) }}
       TF_CLOUD_ORGANIZATION: ${{ vars.TFC_ORGANIZATION }}
-      TF_VAR_port_client_id: ${{ secrets.PORT_CLIENT_ID }}
+      TF_VAR_port_client_id: ${{ vars.PORT_CLIENT_ID }}
       TF_VAR_port_client_secret: ${{ secrets.PORT_CLIENT_SECRET }}
       TF_VAR_live_events_api_key: ${{ secrets.PORT_LIVE_EVENTS_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set derived variables
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tfvar_file }}" ]; then
+            echo "TFVAR_FILE=${{ github.event.inputs.tfvar_file }}" >> "$GITHUB_ENV"
+          else
+            echo "TFVAR_FILE=environments/${ENVIRONMENT}.tfvars" >> "$GITHUB_ENV"
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tf_workspace }}" ]; then
+            echo "TF_WORKSPACE=${{ github.event.inputs.tf_workspace }}" >> "$GITHUB_ENV"
+          else
+            echo "TF_WORKSPACE=${{ vars.TFC_WORKSPACE_SLUG }}-${ENVIRONMENT}" >> "$GITHUB_ENV"
+          fi
+
       - name: Validate inputs
         run: |
           set -euo pipefail
           missing=()
-          if [ "${{ vars.USE_TERRAFORM_CLOUD_BACKEND }}" != "false" ]; then
+          if [ "${{ env.USE_TERRAFORM_CLOUD_BACKEND }}" != "false" ]; then
             [ -z "${{ vars.TFC_ORGANIZATION }}" ] && missing+=(TFC_ORGANIZATION)
-            [ -z "$TF_WORKSPACE" ] && missing+=(TFC_WORKSPACE)
+            [ -z "${{ vars.TFC_WORKSPACE_SLUG }}" ] && missing+=(TFC_WORKSPACE_SLUG)
+            [ -z "$TF_WORKSPACE" ] && missing+=(TF_WORKSPACE)
             [ -z "${{ vars.TFC_WORKSPACE_TAGS }}" ] && missing+=(TFC_WORKSPACE_TAGS)
           fi
-          [ -z "$TFVAR_FILE" ] && missing+=(TFVAR_FILE)
-          if [ "${{ vars.AWS_USE_STATIC_CREDENTIALS }}" != "true" ]; then
+          if [ ! -f "terraform/$TFVAR_FILE" ]; then
+            echo "::error::Varfile not found: terraform/$TFVAR_FILE"
+            echo "Copy environments/example.tfvars to environments/${ENVIRONMENT}.tfvars (or your environment name)."
+            exit 1
+          fi
+          if [ "${{ env.USE_AWS_STATIC_CREDENTIALS }}" != "true" ]; then
             [ -z "$AWS_REGION" ] && missing+=(AWS_REGION)
             [ -z "$AWS_ACCOUNT_ID" ] && missing+=(AWS_ACCOUNT_ID)
             [ -z "$AWS_ROLE_NAME" ] && missing+=(AWS_ROLE_NAME)
           fi
           if [ ${#missing[@]} -ne 0 ]; then
             echo "::error::Missing or empty: ${missing[*]}"
-            echo "Provide each value via GitHub Actions repository Variables"
-            echo "(Settings → Secrets and variables → Actions → Variables)"
-            echo "and/or non-empty workflow_dispatch inputs:"
-            echo "  TFVAR_FILE — path under terraform/, e.g. varfiles/your-install.tfvars"
-            echo "  TFC_ORGANIZATION, TFC_WORKSPACE, TFC_WORKSPACE_TAGS — when using Terraform Cloud (default)"
-            echo "  AWS_REGION, AWS_ACCOUNT_ID, AWS_ROLE_NAME — for OIDC (unless AWS_USE_STATIC_CREDENTIALS=true)"
-            echo "Blank dispatch fields use the same repository Variables as push to main."
+            echo "Set each value in GitHub → Settings → Environments → ${ENVIRONMENT}"
+            echo "  (Variables and Secrets for that environment)."
+            echo "Optional workflow_dispatch inputs override AWS_* when non-empty."
+            echo "TFC workspace defaults to TFC_WORKSPACE_SLUG-ENVIRONMENT unless tf_workspace is set."
             exit 1
           fi
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.14.5
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
           cli_config_credentials_token: >-
-            ${{ vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' &&
+            ${{ env.USE_TERRAFORM_CLOUD_BACKEND != 'false' &&
               secrets.TF_API_TOKEN || '' }}
 
       - name: Configure AWS credentials (OIDC)
-        if: ${{ vars.AWS_USE_STATIC_CREDENTIALS != 'true' }}
+        if: ${{ env.USE_AWS_STATIC_CREDENTIALS != 'true' }}
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ env.TF_AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure AWS credentials (static)
-        if: ${{ vars.AWS_USE_STATIC_CREDENTIALS == 'true' }}
+        if: ${{ env.USE_AWS_STATIC_CREDENTIALS == 'true' }}
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -181,7 +240,7 @@ jobs:
 
       - name: Ensure Terraform Cloud workspace
         id: ensure_workspace
-        if: ${{ vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' }}
+        if: ${{ env.USE_TERRAFORM_CLOUD_BACKEND != 'false' }}
         uses: gossamer-labs/gha-ensure-tfc-workspace@v1.1.0
         with:
           tfc_token: ${{ secrets.TF_API_TOKEN }}
@@ -197,8 +256,8 @@ jobs:
         if: >-
           ${{ env.TF_MODE == 'plan' || env.TF_MODE == 'apply' ||
             (env.TF_MODE == 'destroy' && (
-              vars.USE_TERRAFORM_CLOUD_BACKEND == 'false' ||
-              vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' &&
+              env.USE_TERRAFORM_CLOUD_BACKEND == 'false' ||
+              env.USE_TERRAFORM_CLOUD_BACKEND != 'false' &&
                 steps.ensure_workspace.outputs.workspace_exists == 'true'
             )) }}
         working-directory: terraform
@@ -222,8 +281,8 @@ jobs:
       - name: Terraform destroy
         if: >-
           ${{ env.TF_MODE == 'destroy' && (
-              vars.USE_TERRAFORM_CLOUD_BACKEND == 'false' ||
-              vars.USE_TERRAFORM_CLOUD_BACKEND != 'false' &&
+              env.USE_TERRAFORM_CLOUD_BACKEND == 'false' ||
+              env.USE_TERRAFORM_CLOUD_BACKEND != 'false' &&
                 steps.ensure_workspace.outputs.workspace_exists == 'true'
             ) }}
         working-directory: terraform

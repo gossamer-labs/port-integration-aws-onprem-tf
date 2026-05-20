@@ -4,7 +4,7 @@ Port **AWS** integration on **ECS** with **Terraform**, **Terraform Cloud** remo
 
 Configuration lives under [`terraform/`](terraform/). The stack **creates a small VPC** by default (see [`network.tf`](terraform/network.tf), [`variables_network.tf`](terraform/variables_network.tf)) so you can deploy without hand-picking subnet IDs. To attach to an **existing** VPC later, set `network_use_existing_vpc = true` and fill `network_existing_vpc_id` / `network_existing_subnet_ids`.
 
-[`terraform/varfiles/`](terraform/varfiles/) holds **per-install** `*.tfvars`. Copy [`terraform/varfiles/example.tfvars`](terraform/varfiles/example.tfvars) to **`varfiles/<your-install>.tfvars`**, edit values (including **`aws_region`**), and pass **`-var-file=varfiles/<your-install>.tfvars`** on every `plan` / `apply` / `destroy` — there is no auto-loaded root `terraform.tfvars`.
+[`terraform/environments/`](terraform/environments/) holds **per-environment** `*.tfvars`. Copy [`terraform/environments/example.tfvars`](terraform/environments/example.tfvars) to **`environments/<environment-name>.tfvars`** (e.g. **`integration.tfvars`**, **`production.tfvars`**), edit values (including **`aws_region`**), and pass **`-var-file=environments/<name>.tfvars`** on every `plan` / `apply` / `destroy` — there is no auto-loaded root `terraform.tfvars`. The filename must match your GitHub Actions environment name and CI **`ENVIRONMENT`** value.
 
 **Live events vs multi-account:** Per [Port live events](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/live-events), live events are **single-account only**. This repo enforces that at plan time: **`allow_incoming_requests = true`** cannot be combined with **`organization_role_arn`** / **`account_read_role_name`**. For [multi-account](https://docs.port.io/build-your-software-catalog/sync-data-to-catalog/cloud-providers/aws/installations/multi_account), set **`allow_incoming_requests = false`** and supply both role knobs (see `example.tfvars` Mode B).
 
@@ -46,9 +46,9 @@ Terraform separates **optional account bootstrap** (network, CloudTrail) from th
 | Piece | Purpose |
 |-------|---------|
 | **[`terraform.tf`](terraform/terraform.tf) `cloud {}`** | Partial **Terraform Cloud** backend: set **`TF_CLOUD_ORGANIZATION`** and **`TF_WORKSPACE`** (environment variables) before **`terraform init`**. Port naming stays in **`port_org_slug`** / **`integration_identifier`**. |
-| **GitHub Actions [`ensure-tfc-workspace`](https://github.com/gossamer-labs/gha-ensure-tfc-workspace)** | Ensures a Terraform Cloud workspace exists (**`TFC_ORGANIZATION`**, **`TFC_WORKSPACE`**), **local** execution, and tags from **`TFC_WORKSPACE_TAGS`**. Skipped when **`USE_TERRAFORM_CLOUD_BACKEND`** is **`false`**—see [GitHub Actions](#github-actions). |
+| **GitHub Actions [`ensure-tfc-workspace`](https://github.com/gossamer-labs/gha-ensure-tfc-workspace)** | Ensures a Terraform Cloud workspace exists (**`TFC_ORGANIZATION`**, workspace name **`$TFC_WORKSPACE_SLUG-$ENVIRONMENT`**), **local** execution, and tags from **`TFC_WORKSPACE_TAGS`**. Skipped when workflow **`USE_TERRAFORM_CLOUD_BACKEND`** is **`false`**—see [GitHub Actions](#github-actions). |
 
-**Repository variable `USE_TERRAFORM_CLOUD_BACKEND`:** GitHub cannot read your `terraform.tf`. After you switch to **S3 or local** state ([Without Terraform Cloud](#without-terraform-cloud)), set this variable to **`false`** so CI does **not** call the Terraform Cloud API or run **`ensure-tfc-workspace`**. Leave unset or any value other than **`false`** for the stock **Terraform Cloud** setup.
+**Workflow flag `USE_TERRAFORM_CLOUD_BACKEND`:** Defined in [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workflows/port-integration-aws-onprem-tf.yml) (not a GitHub variable). After you switch to **S3 or local** state ([Without Terraform Cloud](#without-terraform-cloud)), set it to **`false`** so CI does **not** call the Terraform Cloud API or run **`ensure-tfc-workspace`**. Default is **`true`** (Terraform Cloud).
 
 **Secrets:** **`TF_API_TOKEN`** is required for Terraform Cloud remote state and for **`ensure-tfc-workspace`**. If you use only S3/local backend and set **`USE_TERRAFORM_CLOUD_BACKEND=false`**, you may omit **`TF_API_TOKEN`** in CI for **`terraform init`** (configure AWS credentials for the S3 backend instead).
 
@@ -111,7 +111,7 @@ Files below cover **network bootstrap**, **CloudTrail**, the **Port Ocean** modu
 | [`variables_network.tf`](terraform/variables_network.tf) | VPC / subnets (`network_*`), `aws_region` |
 | [`variables_cloudtrail.tf`](terraform/variables_cloudtrail.tf) | CloudTrail + log bucket (`cloudtrail_*`), gated with live events |
 | [`variables_integration.tf`](terraform/variables_integration.tf) | Port Ocean module inputs (`port_*`, **`port_org_slug`**, multi-account knobs, **`default_resource_tags`**, ECS) |
-| [`varfiles/`](terraform/varfiles/) | Per-install **`*.tfvars`** (start from [`example.tfvars`](terraform/varfiles/example.tfvars)). Pass **`-var-file=varfiles/<name>.tfvars`**. Optional gitignored overlays: **`varfiles/*.local.tfvars`**. |
+| [`environments/`](terraform/environments/) | Per-environment **`*.tfvars`** (start from [`example.tfvars`](terraform/environments/example.tfvars)). Pass **`-var-file=environments/<name>.tfvars`**. Optional gitignored overlays: **`environments/*.local.tfvars`**. |
 | [`network.tf`](terraform/network.tf) | `terraform-aws-modules/vpc` (**v5.x**); **`data.aws_vpc`** / **`data.aws_subnets`** (managed) or **`data.aws_subnet`** (BYO) resolve IDs for **`module.aws`**. See [Network discovery](#network-discovery-data-sources). |
 | [`cloudtrail.tf`](terraform/cloudtrail.tf) | Account CloudTrail + optional managed S3 log bucket (when live events on) |
 | [`main.tf`](terraform/main.tf) | `module "aws"` — Port [`aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app); config validation via **`terraform_data.integration_config_validation`**; explicit **`depends_on`** network data sources |
@@ -127,9 +127,15 @@ Files below cover **network bootstrap**, **CloudTrail**, the **Port Ocean** modu
 
 If you later run ECS in **private** subnets from the **same** managed VPC, you will need a different discovery rule (for example a dedicated subnet tag); the default path matches **public subnets + `assign_public_ip = true`**.
 
-### Multiple installs from one repo
+### Multiple environments from one repo
 
-Use **one Terraform Cloud workspace + one varfile per install** (different **`port_org_slug`** / **`integration_identifier`** / AWS account). In GitHub Actions, set **`TFVAR_FILE`** (and **`TFC_WORKSPACE`**) per repository or use **`workflow_dispatch`** inputs **`tfvar_file`** and **`tf_workspace`** to point at the pair you want. The **`terraform`** job’s **`concurrency.group`** uses the same **`workflow_dispatch` input vs `vars.TFVAR_FILE`** logic as the job **`env`** (GitHub does not allow **`env`** in **`concurrency.group`**, so the expression is duplicated there on purpose) so parallel installs keyed by varfile path do not cancel each other.
+Use **one GitHub Actions environment + one Terraform Cloud workspace + one varfile per environment** (different **`port_org_slug`** / **`integration_identifier`** / AWS account). CI sets **`ENVIRONMENT`** from the trigger (`integration` on PRs, `production` on push to **`main`**, or explicit choice on **`workflow_dispatch`**). That value must match:
+
+- A GitHub environment name (Settings → Environments) holding **Variables** and **Secrets**
+- **`terraform/environments/<ENVIRONMENT>.tfvars`**
+- Terraform Cloud workspace **`$TFC_WORKSPACE_SLUG-$ENVIRONMENT`** (from environment variable **`TFC_WORKSPACE_SLUG`**)
+
+The **`terraform`** job’s **`concurrency.group`** is keyed by **`ENVIRONMENT`** so parallel environments do not cancel each other.
 
 ### Live events webhook URL (Terraform output)
 
@@ -153,7 +159,7 @@ Extension rules are created when **`allow_incoming_requests`** and **`live_event
 This repo uses a **partial** [`terraform.tf`](terraform/terraform.tf) **`cloud {}`** block. Before **`terraform init`**, set:
 
 - **`TF_CLOUD_ORGANIZATION`** — your Terraform Cloud organization name (same as GitHub Variable **`TFC_ORGANIZATION`** in CI).
-- **`TF_WORKSPACE`** — the workspace **name** (same as **`TFC_WORKSPACE`** / dispatch **`tf_workspace`**).
+- **`TF_WORKSPACE`** — the workspace **name** (CI default: **`$TFC_WORKSPACE_SLUG-$ENVIRONMENT`**; override with dispatch **`tf_workspace`**).
 
 There is **no** `cloud { workspaces { tags = [...] } }` selector in-repo; each install picks an explicit workspace name via environment / CI variables.
 
@@ -164,7 +170,7 @@ There is **no** `cloud { workspaces { tags = [...] } }` selector in-repo; each i
 1. In [`terraform.tf`](terraform/terraform.tf), **comment out** the entire **`cloud { ... }`** block (Terraform allows only one backend configuration).
 2. Uncomment and fill in the **`backend "s3"`** example in the same file, **or** omit a backend to use **local** state (`terraform.tfstate` in the working directory).
 3. Run **`terraform init -migrate-state`** if you are switching an existing workspace.
-4. In GitHub: set repository variable **`USE_TERRAFORM_CLOUD_BACKEND`** to **`false`** so Actions skips **`ensure-tfc-workspace`** (see [Greenfield vs bring-your-own](#greenfield-vs-bring-your-own-infrastructure)). **`TF_API_TOKEN`** may be unnecessary for **`terraform init`** if state is not stored in Terraform Cloud.
+4. In the workflow YAML: set **`USE_TERRAFORM_CLOUD_BACKEND`** to **`false`** so Actions skips **`ensure-tfc-workspace`** (see [Greenfield vs bring-your-own](#greenfield-vs-bring-your-own-infrastructure)). **`TF_API_TOKEN`** may be unnecessary for **`terraform init`** if state is not stored in Terraform Cloud.
 
 **Selecting a workspace (non-interactive):** set **`TF_WORKSPACE`** to the workspace **name** (same string as GitHub Actions `workflow_dispatch` → **`tf_workspace`**).
 
@@ -185,55 +191,65 @@ With **`TF_CLOUD_ORGANIZATION`** and **`TF_WORKSPACE`** set, **`terraform init`*
 
 Workflow [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workflows/port-integration-aws-onprem-tf.yml):
 
-| Trigger | Behavior |
-|--------|----------|
-| **Pull request** (paths `terraform/**` or this workflow) | **`terraform` job:** `terraform fmt -check`, **`terraform plan -var-file=$TFVAR_FILE`** (after **`format`** job). Same-repo PRs only (fork PRs skip Terraform; secrets/OIDC are unavailable). |
-| **Push to `main`** (same paths) | **`terraform` job:** **`terraform apply -var-file=$TFVAR_FILE`** (runs after merge to trunk). |
-| **`workflow_dispatch`** | **`format`** then **`terraform` job:** choose **plan** / **apply** / **destroy**. Optional string inputs (**`tf_workspace`**, **`tfvar_file`**, **`aws_region`**, **`aws_account_id`**, **`aws_role_name`**) override repository **Variables** when non-empty; leave them blank to use the same **Variables** as **push to `main`**. |
+| Trigger | `ENVIRONMENT` | Behavior |
+|--------|---------------|----------|
+| **Pull request** (paths `terraform/**` or this workflow) | **`integration`** | **`terraform` job:** `terraform fmt -check`, **`terraform plan -var-file=$TFVAR_FILE`** (after **`format`**). Same-repo PRs only (fork PRs skip Terraform). |
+| **Push to `main`** (same paths) | **`production`** | **`terraform apply -var-file=$TFVAR_FILE`**. Restrict **`production`** deployments to **`main`** via GitHub environment protection rules. |
+| **`workflow_dispatch`** | **Required input** (`integration` or `production`) | **`format`** then **`terraform`:** choose **plan** / **apply** / **destroy** and target environment. |
+
+**`ENVIRONMENT`** is never a GitHub variable — the pipeline sets it from the trigger. It must align with a GitHub environment name, **`terraform/environments/<name>.tfvars`**, and TFC workspace **`$TFC_WORKSPACE_SLUG-<name>`**.
 
 Before opening a PR that changes files under `terraform/`, run `terraform fmt -recursive` from the `terraform/` directory so the CI **format** check passes.
 
-Manual **Run workflow** never pre-fills the form from repository **Variables** (GitHub limitation); set **Variables** once, then use dispatch with only **Terraform operation** changed when you want the same install.
+Manual **Run workflow** requires selecting **environment** (no default). Per-environment **Variables** and **Secrets** are not shown in the dispatch form (GitHub limitation).
 
-A **Validate inputs** step fails fast if a required value is missing **after** resolving dispatch inputs and repository **Variables** (each value must be set in at least one place). **`TF_CLOUD_ORGANIZATION`** is injected from **`TFC_ORGANIZATION`** for partial **`cloud {}`**.
+A **Validate inputs** step fails fast if required environment **Variables** are missing or the varfile does not exist. **`TF_CLOUD_ORGANIZATION`** comes from **`TFC_ORGANIZATION`** in the selected GitHub environment.
 
-When repository variable **`USE_TERRAFORM_CLOUD_BACKEND`** is unset or not **`false`**, [**`ensure-tfc-workspace`**](https://github.com/gossamer-labs/gha-ensure-tfc-workspace) runs before **`terraform init`** (for **plan**/**apply**, creates the workspace when missing; **destroy** requires an existing workspace unless you use a non-TFC backend). Passes **`organization: vars.TFC_ORGANIZATION`** and **`workspace_tags: vars.TFC_WORKSPACE_TAGS`**. Set **`USE_TERRAFORM_CLOUD_BACKEND=false`** after switching [`terraform.tf`](terraform/terraform.tf) to S3/local backend so this step is skipped.
+When workflow **`USE_TERRAFORM_CLOUD_BACKEND`** is **`true`** (default), [**`ensure-tfc-workspace`**](https://github.com/gossamer-labs/gha-ensure-tfc-workspace) runs before **`terraform init`**. Workspace name defaults to **`${TFC_WORKSPACE_SLUG}-${ENVIRONMENT}`**. Set **`USE_TERRAFORM_CLOUD_BACKEND=false`** in the workflow YAML after switching to S3/local backend.
+
+### Architectural flags (workflow YAML only)
+
+Edit [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workflows/port-integration-aws-onprem-tf.yml) — not GitHub Variables:
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| **`USE_TERRAFORM_CLOUD_BACKEND`** | **`true`** | Terraform Cloud state vs S3/local |
+| **`USE_AWS_STATIC_CREDENTIALS`** | **`false`** | Static AWS keys vs OIDC (independent of backend) |
+
+All four combinations are valid; see comments in the workflow file.
 
 ### GitHub Actions: OIDC vs static AWS credentials
 
-- **OIDC (default):** the workflow assumes **`arn:aws:iam::<AWS_ACCOUNT_ID>:role/<AWS_ROLE_NAME>`**, built from repository **Variables** **`AWS_ACCOUNT_ID`** and **`AWS_ROLE_NAME`**, with optional **`workflow_dispatch`** overrides when those inputs are non-empty. **There are no baked-in account/role defaults** — set **Variables** and/or dispatch inputs. Ensure your IAM role trust policy allows this repository — see [**CI: AssumeRoleWithWebIdentity**](#ci-assumerolewithwebidentity--oidc-denied).
-- **Static keys:** set repository variable **`AWS_USE_STATIC_CREDENTIALS`** to **`true`** and add secrets **`AWS_ACCESS_KEY_ID`** and **`AWS_SECRET_ACCESS_KEY`**. The OIDC steps are skipped; use least-privilege IAM users and rotate keys regularly.
+- **OIDC (default):** assumes **`arn:aws:iam::<AWS_ACCOUNT_ID>:role/<AWS_ROLE_NAME>`** from the selected environment’s **Variables**, with optional **`workflow_dispatch`** overrides. See [**CI: AssumeRoleWithWebIdentity**](#ci-assumerolewithwebidentity--oidc-denied).
+- **Static keys:** set workflow **`USE_AWS_STATIC_CREDENTIALS`** to **`true`** and add **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`** as **secrets** on each GitHub environment.
 
-**Repository variables** (Settings → Secrets and variables → Actions → **Variables** — **required** for PR / **`main`**; for **`workflow_dispatch`**, blank string inputs use these same **Variables**)
+**Per-environment variables** (Settings → Environments → **`<name>`** → Environment variables)
 
 | Variable | Purpose |
 |----------|---------|
-| **`USE_TERRAFORM_CLOUD_BACKEND`** | Set to **`false`** when [`terraform.tf`](terraform/terraform.tf) uses **S3 or local** state instead of **`cloud {}`**. Skips **`ensure-tfc-workspace`** and avoids Terraform Cloud API calls in CI. Omit or use any other value for default Terraform Cloud behavior. |
-| **`TFC_ORGANIZATION`** | Terraform Cloud **organization** name (feeds **`TF_CLOUD_ORGANIZATION`** in the workflow and **`ensure-tfc-workspace`**). Not required when **`USE_TERRAFORM_CLOUD_BACKEND=false`**. |
-| **`TFC_WORKSPACE`** | Terraform Cloud **workspace name** (feeds **`TF_WORKSPACE`**). |
-| **`TFC_WORKSPACE_TAGS`** | Comma-separated tags **`ensure-tfc-workspace`** applies to the workspace (e.g. a single tag used to group installs). |
-| **`TFVAR_FILE`** | Path under **`terraform/`** to your install varfile (copy from [`example.tfvars`](terraform/varfiles/example.tfvars), e.g. **`varfiles/mystack.tfvars`**). Passed as **`-var-file=$TFVAR_FILE`**. |
-| **`AWS_REGION`** | AWS region for **`configure-aws-credentials`**. Must match **`aws_region`** in your varfile. |
-| **`AWS_ACCOUNT_ID`** | AWS account ID for the OIDC role ARN **`arn:aws:iam::<id>:role/<name>`**. |
-| **`AWS_ROLE_NAME`** | IAM role **name** for GitHub OIDC. |
-| **`AWS_USE_STATIC_CREDENTIALS`** | Set to **`true`** to use **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`** secrets instead of OIDC (optional; default is OIDC). |
+| **`TFC_ORGANIZATION`** | Terraform Cloud organization (feeds **`TF_CLOUD_ORGANIZATION`**). If shared across all envs, you could promote this to a repo variable instead. |
+| **`TFC_WORKSPACE_SLUG`** | Base workspace name; CI sets **`TF_WORKSPACE`** to **`$TFC_WORKSPACE_SLUG-$ENVIRONMENT`**. |
+| **`TFC_WORKSPACE_TAGS`** | Tags for **`ensure-tfc-workspace`**. |
+| **`AWS_REGION`** | Region for **`configure-aws-credentials`**; align with **`aws_region`** in your varfile. |
+| **`AWS_ACCOUNT_ID`** | Account ID for OIDC role ARN. |
+| **`AWS_ROLE_NAME`** | IAM role name for GitHub OIDC. |
+| **`PORT_CLIENT_ID`** | `TF_VAR_port_client_id` (not sensitive). |
 
-**Repository secrets** (Settings → Secrets and variables → Actions → **Secrets** — use **Secrets**, not **Variables**)
+**Per-environment secrets** (Settings → Environments → **`<name>`** → Environment secrets)
 
 | Secret | Purpose |
 |--------|---------|
-| `TF_API_TOKEN` | Terraform Cloud API token (for `cloud {}` remote state and **`ensure-tfc-workspace`** in CI). If you use S3/local state and **`USE_TERRAFORM_CLOUD_BACKEND=false`**, omit or leave unset—[`cli_config_credentials_token`](https://github.com/hashicorp/setup-terraform) is empty in that case. |
-| `PORT_CLIENT_ID` | `TF_VAR_port_client_id` |
+| `TF_API_TOKEN` | Terraform Cloud API token and **`ensure-tfc-workspace`**. |
 | `PORT_CLIENT_SECRET` | `TF_VAR_port_client_secret` |
-| `PORT_LIVE_EVENTS_API_KEY` | Same value as **`TF_VAR_live_events_api_key`** (e.g. from `openssl rand -hex 32`); wired to Terraform as **`TF_VAR_live_events_api_key`** |
-| `AWS_ACCESS_KEY_ID` | (Optional) Static AWS access key when **`AWS_USE_STATIC_CREDENTIALS`** is **`true`** |
-| `AWS_SECRET_ACCESS_KEY` | (Optional) Static AWS secret key when **`AWS_USE_STATIC_CREDENTIALS`** is **`true`** |
+| `PORT_LIVE_EVENTS_API_KEY` | `TF_VAR_live_events_api_key` |
+| `AWS_ACCESS_KEY_ID` | (Optional) When **`USE_AWS_STATIC_CREDENTIALS=true`** |
+| `AWS_SECRET_ACCESS_KEY` | (Optional) When **`USE_AWS_STATIC_CREDENTIALS=true`** |
 
-If **`PORT_LIVE_EVENTS_API_KEY`** is missing or empty in GitHub Actions, **`TF_VAR_live_events_api_key`** is not set. Terraform then passes **`integration.config` without `live_events_api_key`** (see [`main.tf`](terraform/main.tf)) even though **`allow_incoming_requests = true`** — **`terraform plan` / `apply` may still succeed**, but live-events webhook validation is **not** configured. Always define **`PORT_LIVE_EVENTS_API_KEY`** for CI when using live events.
+If **`PORT_LIVE_EVENTS_API_KEY`** is missing, live-events webhook validation is not configured — see prior note in this section.
 
-**Dispatch** can override **`TF_WORKSPACE`**, **`TFVAR_FILE`**, **`AWS_REGION`**, **`AWS_ACCOUNT_ID`**, and **`AWS_ROLE_NAME`** when the corresponding inputs are non-empty. **PR / `main`** read **`vars.TFC_WORKSPACE`**, **`vars.TFVAR_FILE`**, and the AWS/TFC variables above — there are **no** workflow fallbacks if they are unset (the validate step fails). Keep **`aws_region`** in your varfile aligned with **`AWS_REGION`**.
+**Dispatch** can override **`tf_workspace`** (full workspace name), **`tfvar_file`** (varfile path), and **`AWS_*`** inputs when non-empty. Default varfile is **`environments/$ENVIRONMENT.tfvars`**.
 
-**Apply on `main`:** any **push** to **`main`** that matches the path filter runs **apply** (including direct pushes, not only merges). Restrict merges via branch protection if needed.
+**Apply on `main`:** runs against **`production`** only (path filter + **`ENVIRONMENT=production`**). Use branch and environment protection as needed.
 
 ### CI: `AssumeRoleWithWebIdentity` / OIDC denied
 
@@ -268,7 +284,7 @@ Remove AWS resources created by this Terraform configuration, then clean up Port
 
 ### AWS — `terraform destroy`
 
-1. Run the workflow [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workflows/port-integration-aws-onprem-tf.yml) via **`workflow_dispatch`** with **`mode: destroy`**. Leave optional inputs blank to reuse repository **Variables** from apply, or set the same non-empty overrides you use for apply.
+1. Run the workflow [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workflows/port-integration-aws-onprem-tf.yml) via **`workflow_dispatch`** with **`mode: destroy`** and the target **environment**. Leave optional inputs blank to use that environment’s **Variables** / **Secrets**, or set the same overrides you use for apply.
 2. With **Terraform Cloud** remote state, **`ensure-tfc-workspace`** runs unless **`USE_TERRAFORM_CLOUD_BACKEND=false`**; destroy expects the workspace to exist in that path. If you use **S3 or local** state and **`USE_TERRAFORM_CLOUD_BACKEND=false`**, CI skips workspace ensure but still runs **`terraform destroy`** when dispatching destroy—see [Greenfield vs bring-your-own infrastructure](#greenfield-vs-bring-your-own-infrastructure) and [GitHub Actions](#github-actions).
 3. If **`terraform destroy`** fails because **S3 will not delete a bucket that still has contents** (common error: bucket not empty), fix the bucket and **re-run destroy** until it completes:
    - **Managed CloudTrail log bucket** (when this stack created CloudTrail for live events): the bucket name follows **`{cloudtrail_name_prefix}-cloudtrail-logs-<aws_account_id>`** (see [Live events prerequisites](#live-events-prerequisites-cloudtrail)). While the stack still exists, **`terraform output cloudtrail_log_bucket_name`** shows the exact name. This repo enables **S3 versioning** on that bucket, so you must remove **current objects, all versions, and delete markers**—use the S3 console **Empty** action (including versions), or equivalent CLI/API—then run **`terraform destroy`** again. Often the first **`destroy`** already removes the trail and policies; if it stops on **`aws_s3_bucket`**, empty the bucket and re-run.
@@ -295,8 +311,8 @@ aws sso login --profile "$AWS_PROFILE"   # or your org’s AWS credential flow
 cd terraform
 export TF_CLOUD_ORGANIZATION="<your-terraform-cloud-org>"
 export TF_WORKSPACE="<your-tfc-workspace-name>"
-export TFVAR_FILE="varfiles/<your-install>.tfvars"
-export AWS_DEFAULT_REGION="<same-as-aws_region-in-your-varfile>"   # see terraform/varfiles/example.tfvars
+export TFVAR_FILE="environments/<your-environment>.tfvars"
+export AWS_DEFAULT_REGION="<same-as-aws_region-in-your-varfile>"   # see terraform/environments/example.tfvars
 export TF_VAR_port_client_id="..."
 export TF_VAR_port_client_secret="..."
 export TF_VAR_live_events_api_key="..."   # same random secret as in CI / openssl rand -hex 32
@@ -318,9 +334,9 @@ After apply, confirm the pipeline end-to-end:
 ## First-time checklist
 
 - **AWS:** Ensure credentials target the same region as **`aws_region`** in your varfile before **`terraform plan`** / **`apply`**.
-- **AWS / GitHub:** Set repository **Variables** **`AWS_ACCOUNT_ID`**, **`AWS_ROLE_NAME`**, **`AWS_REGION`**, **`TFVAR_FILE`**, **`TFC_ORGANIZATION`**, **`TFC_WORKSPACE`**, **`TFC_WORKSPACE_TAGS`** (when using Terraform Cloud). For static credentials, set **`AWS_USE_STATIC_CREDENTIALS=true`** and add **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`** secrets.
-- **Port org slug:** Set **`port_org_slug`** in your **`varfiles/<name>.tfvars`** (required; no default in code). The Port integration identifier becomes **`onprem-tf-<port_org_slug>`** unless you set **`integration_identifier`**. Long slugs can push upstream IAM role **names** over AWS’s **64-character** limit—see [IAM role name length](#iam-role-name-length-integration-naming). Existing deployments that already registered **`aws-onprem-tf-<port_org_slug>`** in Port should set **`integration_identifier`** explicitly to that value until you intentionally migrate.
-- **Secrets / CI:** Export **`TF_VAR_port_client_id`**, **`TF_VAR_port_client_secret`**, and **`TF_VAR_live_events_api_key`** locally; add **`TF_API_TOKEN`**, **`PORT_CLIENT_ID`**, **`PORT_CLIENT_SECRET`**, and **`PORT_LIVE_EVENTS_API_KEY`** as **repository secrets**. Omitting **`PORT_LIVE_EVENTS_API_KEY`** in CI skips passing **`live_events_api_key`** into Terraform — see GitHub Actions secrets note above. Set repository **Variables** listed in [GitHub Actions](#github-actions) for **PR plan** and **`main` apply**. For local Terraform Cloud auth, use **`terraform login`** or **`TF_TOKEN_app_terraform_io`**, and set **`TF_CLOUD_ORGANIZATION`** + **`TF_WORKSPACE`** (see [**Secrets**](#secrets--environment-variables-never-commit) and [Remote state](#remote-state-terraform-cloud)).
+- **AWS / GitHub:** Create GitHub environments (e.g. **`integration`**, **`production`**) and set per-environment **Variables** / **Secrets** listed in [GitHub Actions](#github-actions). Copy **`environments/example.tfvars`** to **`environments/<name>.tfvars`** for each environment.
+- **Port org slug:** Set **`port_org_slug`** in your **`environments/<name>.tfvars`** (required; no default in code). The Port integration identifier becomes **`onprem-tf-<port_org_slug>`** unless you set **`integration_identifier`**. Long slugs can push upstream IAM role **names** over AWS’s **64-character** limit—see [IAM role name length](#iam-role-name-length-integration-naming).
+- **Secrets / CI:** Export **`TF_VAR_*`** locally; configure **`PORT_CLIENT_ID`** (variable), **`PORT_CLIENT_SECRET`**, **`PORT_LIVE_EVENTS_API_KEY`**, and **`TF_API_TOKEN`** on each GitHub environment. For Terraform Cloud, set **`TF_CLOUD_ORGANIZATION`** + **`TF_WORKSPACE`** (workspace name **`$TFC_WORKSPACE_SLUG-$ENVIRONMENT`** in CI).
 - **Port:** Confirm **`port_base_url`** matches your Port region (US `api.us.port.io` vs EU `api.port.io`).
 - **Network:** If CIDR **`10.48.0.0/16`** overlaps another VPC or peered network, change `network_vpc_cidr` and `network_public_subnet_cidrs` together in your varfile.
 - **ECS networking:** **`assign_public_ip = true`** matches **public subnets + no NAT** (default bundle). For private subnets + NAT, set `network_private_subnet_cidrs`, `network_enable_nat_gateway = true`, and `assign_public_ip = false`.

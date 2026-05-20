@@ -1,6 +1,46 @@
+# =============================================================================
+# port-integration-aws-onprem-tf — repository .gitignore
+#
+# Single ignore file for the whole repo (including terraform/). Patterns are
+# written from the repository root. Run Terraform from terraform/ as documented
+# in README.md.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Editor and OS artifacts (repository-wide)
+# -----------------------------------------------------------------------------
 .DS_Store
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+
+# -----------------------------------------------------------------------------
+# Terraform working directory (terraform/)
+#
+# Provider plugins, local state, crash logs, and override files must not be
+# committed. See https://developer.hashicorp.com/terraform/tutorials/cli/init
+# -----------------------------------------------------------------------------
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/crash.log
+terraform/crash.*.log
+terraform/override.tf
+terraform/override.tf.json
+terraform/*_override.tf
+terraform/*_override.tf.json
+
+# Local secret varfiles — use TF_VAR_* or GitHub environment secrets instead
+# (see README.md “Secrets — environment variables”).
+terraform/secrets.auto.tfvars
+
+# -----------------------------------------------------------------------------
+# Per-environment tfvars (terraform/environments/)
+#
+# - example.tfvars — shipped with the repo as the template
+# - <name>.tfvars (e.g. integration.tfvars, production.tfvars) — commit filled-in copies.
+# - *.local.tfvars — optional private overlays; pass as a second -var-file.
+# -----------------------------------------------------------------------------
+terraform/environments/*.local.tfvars
