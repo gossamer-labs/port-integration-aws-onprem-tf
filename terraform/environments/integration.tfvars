@@ -16,7 +16,7 @@ aws_region = "us-east-2"
 
 network_use_existing_vpc = false
 
-network_vpc_name = "port-ocean"
+network_vpc_name = "port-ocean-int"
 network_vpc_cidr = "10.48.0.0/16"
 
 network_public_subnet_cidrs  = ["10.48.0.0/24", "10.48.1.0/24"]
@@ -25,7 +25,8 @@ network_enable_nat_gateway   = false
 
 port_base_url = "https://api.us.port.io"
 
-port_org_slug = "gossint"
+# Drives Port integration ID (onprem-tf-<slug>), IAM roles, and ECS service name.
+port_org_slug = "goss-int"
 
 initialize_port_resources = true
 scheduled_resync_interval = 1440
@@ -37,6 +38,7 @@ allow_incoming_requests = true
 create_default_sg = true
 assign_public_ip  = true
 
-cluster_name = "port-exporter"
+cluster_name = "port-exporter-int"
 
-cloudtrail_enabled = true
+cloudtrail_enabled     = true
+cloudtrail_name_prefix = "port-exporter-int"

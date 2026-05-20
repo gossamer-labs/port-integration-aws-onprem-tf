@@ -39,6 +39,30 @@
 # This file lists every root-module variable defined in terraform/variables_*.tf.
 # Uncomment or override blocks that match your install; commented lines show shape only.
 # -----------------------------------------------------------------------------
+#
+# Resource naming — must be unique per environment
+#
+# If integration and production (or any two environments) share the same AWS account
+# and region, set DIFFERENT values for every variable below. Otherwise apply will fail
+# on duplicate names (ECS cluster, IAM roles, CloudTrail, S3 bucket, Port integration ID).
+#
+# | Variable                 | AWS / Port resource affected                            |
+# |--------------------------|---------------------------------------------------------|
+# | port_org_slug            | Port integration ID, IAM roles, ECS service name        |
+# | cluster_name             | ECS cluster                                             |
+# | network_vpc_name         | VPC Name tag (used by data.aws_vpc lookup)              |
+# | network_vpc_cidr       | VPC CIDR (use non-overlapping ranges per env)             |
+# | cloudtrail_name_prefix   | CloudTrail trail + managed S3 log bucket name           |
+#
+# Example suffix pattern: integration → *-int / goss-int; production → *-prd / goss-prd.
+#
+# Separate AWS accounts per environment (recommended for production): only port_org_slug
+# (Port-side) and cloudtrail_name_prefix (S3 bucket names are globally unique) must differ.
+# ECS clusters, IAM roles, VPCs, and CloudTrail trails are already scoped per account.
+#
+# Changing port_org_slug on an existing Port registration creates a new integration;
+# use integration_identifier explicitly to keep an existing Port integration ID.
+# -----------------------------------------------------------------------------
 
 # ============================================================
 # AWS provider & tagging
