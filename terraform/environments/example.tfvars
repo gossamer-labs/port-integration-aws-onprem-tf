@@ -1,12 +1,12 @@
 # -----------------------------------------------------------------------------
 # Copy this file once per GitHub Actions environment you define, e.g.:
-#   cp environments/example.tfvars environments/integration.tfvars
-#   cp environments/example.tfvars environments/production.tfvars
+#   cp environments/example.tfvars environments/lab.tfvars
+#   cp environments/example.tfvars environments/prod.tfvars
 #   cp environments/example.tfvars environments/<your-env>.tfvars
 #
 # The following must match the environment name exactly:
 #   - GitHub Actions environment (Settings → Environments → <your-env>)
-#   - CI ENVIRONMENT value (integration / production / <your-env>)
+#   - CI ENVIRONMENT value (lab / prod / <your-env>)
 #   - Terraform Cloud workspace suffix: $TFC_WORKSPACE_SLUG-<your-env>
 #
 # Secrets and variables are NOT committed in this template — configure per environment:
@@ -25,7 +25,7 @@
 #
 #   # Terraform Cloud (when using cloud {} in terraform.tf)
 #   export TF_CLOUD_ORGANIZATION="..."
-#   export TF_WORKSPACE="<TFC_WORKSPACE_SLUG>-<your-env>"   # e.g. port-integration-aws-onprem-tf-integration
+#   export TF_WORKSPACE="<TFC_WORKSPACE_SLUG>-<your-env>"   # e.g. port-integration-aws-onprem-tf-lab
 #   export TF_TOKEN_app_terraform_io="..."   # or: terraform login
 #
 #   # AWS (provider uses aws_region from this varfile; align region with your credentials)
@@ -33,8 +33,8 @@
 #   export AWS_DEFAULT_REGION="<same-as-aws_region-below>"
 #
 # Optional private overlay (gitignored): environments/<name>.local.tfvars
-#   terraform plan -var-file=environments/integration.tfvars \
-#     -var-file=environments/integration.local.tfvars
+#   terraform plan -var-file=environments/lab.tfvars \
+#     -var-file=environments/lab.local.tfvars
 #
 # This file lists every root-module variable defined in terraform/variables_*.tf.
 # Uncomment or override blocks that match your install; commented lines show shape only.
@@ -42,7 +42,7 @@
 #
 # Resource naming — must be unique per environment
 #
-# If integration and production (or any two environments) share the same AWS account
+# If lab and prod (or any two environments) share the same AWS account
 # and region, set DIFFERENT values for every variable below. Otherwise apply will fail
 # on duplicate names (ECS cluster, IAM roles, CloudTrail, S3 bucket, Port integration ID).
 #
@@ -54,9 +54,9 @@
 # | network_vpc_cidr       | VPC CIDR (use non-overlapping ranges per env)             |
 # | cloudtrail_name_prefix   | CloudTrail trail + managed S3 log bucket name           |
 #
-# Example suffix pattern: integration → *-int / goss-int; production → *-prd / goss-prd.
+# Example suffix pattern: lab → *-int / goss-int; prod → *-prd / goss-prd.
 #
-# Separate AWS accounts per environment (recommended for production): only port_org_slug
+# Separate AWS accounts per environment (recommended for prod): only port_org_slug
 # (Port-side) and cloudtrail_name_prefix (S3 bucket names are globally unique) must differ.
 # ECS clusters, IAM roles, VPCs, and CloudTrail trails are already scoped per account.
 #
