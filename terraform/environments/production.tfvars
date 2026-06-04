@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # Production environment
 # Pass: terraform plan -var-file=environments/production.tfvars
-# CI: ENVIRONMENT=production (push to main / workflow_dispatch)
+# CI: ENVIRONMENT=production (push to main; workflow_dispatch when selected)
 # Secrets: GitHub environment `production` + TF_VAR_* for local runs
 # -----------------------------------------------------------------------------
 

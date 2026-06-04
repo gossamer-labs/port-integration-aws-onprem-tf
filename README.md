@@ -1,6 +1,6 @@
 # port-integration-aws-onprem-tf
 
-Deploy the Port **AWS** integration on **ECS** with **Terraform**, optional **Terraform Cloud** remote state, and **GitHub Actions** for multiple environments. This repo wires up the [Port Ocean `aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) module, optional VPC and CloudTrail bootstrap, and CI that maps **pull requests → integration** and **push to `main` → production**.
+Deploy the Port **AWS** integration on **ECS** with **Terraform**, optional **Terraform Cloud** remote state, and **GitHub Actions** for multiple environments. This repo wires up the [Port Ocean `aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) module, optional VPC and CloudTrail bootstrap, and CI that maps **branch pushes and pull requests → integration (plan)** and **push to `main` → production (plan + apply)**.
 
 **Two sync paths** (pick one in your varfile):
 
@@ -174,11 +174,14 @@ Workflow: [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workf
 
 | Trigger | `ENVIRONMENT` | Terraform |
 |---------|---------------|-----------|
+| **Push** (non-`main`, path filter) | `integration` | `plan` |
 | **Pull request** (`terraform/**` or workflow) | `integration` | `plan` (same-repo PRs only; forks skip) |
-| **Push to `main`** | `production` | `apply` (auto-approve) |
-| **`workflow_dispatch`** | Required input (`integration` / `production`) | `plan`, `apply`, or `destroy` |
+| **Push to `main`** | `production` | `plan` (log), `plan -out` (artifact), `apply` (saved plan) |
+| **`workflow_dispatch`** | Required input (`integration` / `production`) | `plan` or `destroy` |
 
 `ENVIRONMENT` is **never** a GitHub variable — the pipeline sets it. Restrict production deploys to `main` via GitHub **environment protection** on `production`.
+
+On push to `main`, apply always uses the binary plan file (`terraform/tfplan`) produced in the same job; the workflow also uploads that file as a run artifact (`tfplan-production-<run_id>`) for audit.
 
 Before opening a PR, run from `terraform/`: **`terraform fmt -recursive`**.
 
@@ -204,8 +207,6 @@ Before opening a PR, run from `terraform/`: **`terraform fmt -recursive`**.
 | `PORT_CLIENT_SECRET` | → `TF_VAR_port_client_secret` |
 | `PORT_LIVE_EVENTS_API_KEY` | → `TF_VAR_live_events_api_key` |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Only if `USE_AWS_STATIC_CREDENTIALS=true` |
-
-**Dispatch** can override `tf_workspace`, `tfvar_file`, and `aws_*` inputs.
 
 ### Workflow flags (edit YAML, not GitHub Variables)
 
@@ -239,7 +240,7 @@ export TF_CLOUD_ORGANIZATION="<org>"
 export TF_WORKSPACE="<workspace-name>"
 ```
 
-CI sets `TF_WORKSPACE` to **`${TFC_WORKSPACE_SLUG}-${ENVIRONMENT}`** unless dispatch overrides `tf_workspace`.
+CI sets `TF_WORKSPACE` to **`${TFC_WORKSPACE_SLUG}-${ENVIRONMENT}`**.
 
 **Without Terraform Cloud:**
 

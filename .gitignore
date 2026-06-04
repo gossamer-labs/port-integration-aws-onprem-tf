@@ -31,6 +31,8 @@ terraform/override.tf
 terraform/override.tf.json
 terraform/*_override.tf
 terraform/*_override.tf.json
+terraform/tfplan
+terraform/*.tfplan
 
 # Local secret varfiles — use TF_VAR_* or GitHub environment secrets instead
 # (see README.md “Secrets — environment variables”).
