@@ -14,11 +14,9 @@ default_resource_tags = {
 
 aws_region = "us-east-2"
 
-network_use_existing_vpc = false
-
-network_vpc_name = "port-ocean-prod"
-network_vpc_cidr = "10.49.0.0/16"
-
+network_use_existing_vpc     = false
+network_vpc_name             = "port-ocean-prod"
+network_vpc_cidr             = "10.49.0.0/16"
 network_public_subnet_cidrs  = ["10.49.0.0/24", "10.49.1.0/24"]
 network_private_subnet_cidrs = []
 network_enable_nat_gateway   = false
@@ -29,9 +27,9 @@ port_base_url = "https://api.us.port.io"
 port_org_slug = "goss-prod"
 
 initialize_port_resources = true
-scheduled_resync_interval = 1440
 
-event_listener_type = "POLLING"
+event_listener_type       = "POLLING"
+scheduled_resync_interval = 1440
 
 allow_incoming_requests = true
 

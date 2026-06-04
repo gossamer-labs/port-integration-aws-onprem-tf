@@ -13,10 +13,10 @@ name: port-integration-aws-onprem-tf
 #      (restrict to default branch) — not enforced in this YAML.
 #
 # Triggers → Terraform:
-#   pull_request        → plan -out (artifact), apply (development)
-#   push (non-trunk)    → plan -out (artifact), apply (development)
-#   push (trunk)        → plan -out (artifact), apply (production)
-#   workflow_dispatch   → plan -out (artifact) or destroy (chosen environment; no apply)
+#   pull_request        → plan (artifact), apply (development)
+#   push (non-trunk)    → plan (artifact), apply (development)
+#   push (trunk)        → plan (artifact), apply (production)
+#   workflow_dispatch   → plan (artifact) or destroy (chosen environment); no apply
 #
 # Per-environment config: GitHub → Settings → Environments → <name>
 #   Variables: TFC_ORGANIZATION, TFC_WORKSPACE_SLUG, TFC_WORKSPACE_TAGS,
@@ -27,17 +27,15 @@ name: port-integration-aws-onprem-tf
 # Pipeline defaults (workflow env — edit in this file, not GitHub variables):
 #   TERRAFORM_VERSION — Terraform CLI for hashicorp/setup-terraform (default 1.14.5;
 #                       must satisfy terraform/terraform.tf required_version)
-#   ENVIRONMENT — deployment target for steps (workflow env); duplicated on job
-#                 environment/concurrency (those keys cannot use env context)
 #
 # Architectural flags (terraform job env — not GitHub variables):
 #   USE_TERRAFORM_CLOUD_BACKEND — where Terraform state lives (TFC vs S3/local)
 #   USE_AWS_STATIC_CREDENTIALS  — OIDC vs static AWS keys (independent of backend)
 # Valid combinations:
-#   TFC=true  + static=false → TFC state, OIDC (default)
-#   TFC=true  + static=true  → TFC state, static keys
-#   TFC=false + static=false → S3/local state, OIDC
-#   TFC=false + static=true  → S3/local state, static keys
+#   TFC=true  + STATIC=false → TFC state, OIDC (default)
+#   TFC=true  + STATIC=true  → TFC state, static keys
+#   TFC=false + STATIC=false → S3/local state, OIDC
+#   TFC=false + STATIC=true  → S3/local state, static keys
 # -----------------------------------------------------------------------------
 
 on:
@@ -261,7 +259,7 @@ jobs:
         working-directory: terraform
         run: terraform validate
 
-      - name: Terraform plan (output artifact)
+      - name: Terraform plan (artifact)
         if: ${{ env.RUN_PLAN == 'true' && env.RUN_DESTROY != 'true' }}
         working-directory: terraform
         run: terraform plan -input=false -var-file="$TFVAR_FILE" -out="$TF_PLAN_FILE"
