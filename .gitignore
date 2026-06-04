@@ -42,7 +42,7 @@ terraform/secrets.auto.tfvars
 # Per-environment tfvars (terraform/environments/)
 #
 # - example.tfvars — shipped with the repo as the template
-# - <name>.tfvars (e.g. lab.tfvars, prod.tfvars) — commit filled-in copies.
+# - <name>.tfvars (e.g. development.tfvars, production.tfvars) — commit filled-in copies.
 # - *.local.tfvars — optional private overlays; pass as a second -var-file.
 # -----------------------------------------------------------------------------
 terraform/environments/*.local.tfvars

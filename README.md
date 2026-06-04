@@ -1,6 +1,6 @@
 # port-integration-aws-onprem-tf
 
-Deploy the Port **AWS** integration on **ECS** with **Terraform**, optional **Terraform Cloud** remote state, and **GitHub Actions** for multiple environments. This repo wires up the [Port Ocean `aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) module, optional VPC and CloudTrail bootstrap, and CI that maps **branch pushes and pull requests → lab (plan)** and **push to `main` → prod (plan + apply)**.
+Deploy the Port **AWS** integration on **ECS** with **Terraform**, optional **Terraform Cloud** remote state, and **GitHub Actions** for multiple environments. This repo wires up the [Port Ocean `aws_container_app`](https://registry.terraform.io/modules/port-labs/integration-factory/ocean/latest/examples/aws_container_app) module, optional VPC and CloudTrail bootstrap, and CI that **plans and applies** to **development** on pull requests and non-trunk pushes, and to **production** on pushes to the repository **default branch** (trunk).
 
 **Two sync paths** (pick one in your varfile):
 
@@ -30,7 +30,7 @@ Default **`port_base_url`** is US (`https://api.us.port.io`). Use `https://api.p
 **1. Copy a varfile per environment**
 
 ```bash
-cp terraform/environments/example.tfvars terraform/environments/lab.tfvars
+cp terraform/environments/example.tfvars terraform/environments/development.tfvars
 # edit port_org_slug, aws_region, network_*, cluster_name, cloudtrail_name_prefix, etc.
 ```
 
@@ -63,10 +63,10 @@ export AWS_DEFAULT_REGION="<same-as-aws_region-in-your-varfile>"
 ```bash
 cd terraform
 terraform init -input=false
-terraform plan -input=false -var-file=environments/lab.tfvars
+terraform plan -input=false -var-file=environments/development.tfvars
 ```
 
-For CI, configure GitHub **Environments** (`lab`, `prod`) — see [GitHub Actions](#github-actions).
+For CI, configure GitHub **Environments** (`development`, `production`) — see [GitHub Actions](#github-actions).
 
 ---
 
@@ -84,8 +84,10 @@ Shipped examples:
 
 | File | `port_org_slug` | VPC CIDR | Notes |
 |------|-----------------|----------|--------|
-| [`lab.tfvars`](terraform/environments/lab.tfvars) | `goss-int` | `10.48.0.0/16` | PR / non-`main` CI |
-| [`prod.tfvars`](terraform/environments/prod.tfvars) | `goss-prd` | `10.49.0.0/16` | Push to `main` CI |
+| [`development.tfvars`](terraform/environments/development.tfvars) | `goss-lab` | `10.48.0.0/16` | PR / non-trunk push CI |
+| [`production.tfvars`](terraform/environments/production.tfvars) | `goss-prod` | `10.49.0.0/16` | Push to default branch CI |
+
+GitHub environment names (`development`, `production`) are independent of AWS/Port resource names in the varfiles (e.g. `port_org_slug`, `network_vpc_name`).
 
 Start from [`example.tfvars`](terraform/environments/example.tfvars) — it documents every root variable. Optional gitignored overlay: `environments/<name>.local.tfvars`.
 
@@ -103,7 +105,7 @@ If two environments share one account and region, these **must differ** per envi
 | `network_vpc_cidr` | VPC CIDR (use non-overlapping ranges) |
 | `cloudtrail_name_prefix` | Trail `{prefix}-live-events` and bucket `{prefix}-cloudtrail-logs-<account_id>` |
 
-Suffix pattern in the shipped files: lab → `*-int` / `goss-int`; prod → `*-prd` / `goss-prd`.
+Suffix pattern in the shipped files: development varfile uses `*-lab` / `goss-lab`; production varfile uses `*-prod` / `goss-prod` (AWS resource names, not the GitHub environment name).
 
 **Separate AWS accounts per environment** (recommended for production): only `port_org_slug` (Port-side) and `cloudtrail_name_prefix` (S3 names are global) need to differ; other resources are scoped per account.
 
@@ -174,14 +176,14 @@ Workflow: [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workf
 
 | Trigger | `ENVIRONMENT` | Terraform |
 |---------|---------------|-----------|
-| **Push** (non-`main`, path filter) | `lab` | `plan` |
-| **Pull request** (`terraform/**` or workflow) | `lab` | `plan` (same-repo PRs only; forks skip) |
-| **Push to `main`** | `prod` | `plan -out` (artifact), `apply` (saved plan) |
-| **`workflow_dispatch`** | Required input (`lab` / `prod`) | `plan` or `destroy` |
+| **Push** (non-trunk, path filter) | `development` | `plan -out` (artifact), `apply` |
+| **Pull request** (`terraform/**` or workflow) | `development` | `plan -out` (artifact), `apply` (same-repo PRs only; forks skip) |
+| **Push** (default branch / trunk) | `production` | `plan -out` (artifact), `apply` |
+| **`workflow_dispatch`** | Required input (`development` / `production`) | `plan -out` (artifact) or `destroy` (no apply) |
 
-`ENVIRONMENT` is **never** a GitHub variable — the pipeline sets it. Restrict prod deploys to `main` via GitHub **environment protection** on `prod`.
+`ENVIRONMENT` is **never** a GitHub variable — the pipeline sets it. Trunk is the repository **default branch** (`github.event.repository.default_branch`), not a hardcoded branch name. Restrict production deploys via GitHub **environment protection** on `production` (limit to the default branch in the UI).
 
-On push to `main`, a single `plan -out` step produces the binary plan file (`terraform/tfplan`); apply uses that file in the same job, and the workflow uploads it as a run artifact (`tfplan-prod-<run_id>`) for audit.
+On push and pull request runs, a single `plan -out` step produces the binary plan file (`terraform/tfplan`); apply uses that file in the same job, and the workflow uploads it as a run artifact (`tfplan-<environment>-<run_id>`) for audit.
 
 Before opening a PR, run from `terraform/`: **`terraform fmt -recursive`**.
 
@@ -272,8 +274,8 @@ export TF_VAR_live_events_api_key="..."    # Path 1 only
 
 cd terraform
 terraform init -input=false
-terraform plan -input=false -var-file=environments/lab.tfvars
-terraform apply -input=false -var-file=environments/lab.tfvars
+terraform plan -input=false -var-file=environments/development.tfvars
+terraform apply -input=false -var-file=environments/development.tfvars
 ```
 
 Commit [`.terraform.lock.hcl`](terraform/.terraform.lock.hcl); regenerate with `terraform providers lock` when upgrading providers.
@@ -319,8 +321,8 @@ Commit [`.terraform.lock.hcl`](terraform/.terraform.lock.hcl); regenerate with `
 ## First-time checklist
 
 - [ ] Copy `example.tfvars` → `environments/<name>.tfvars` for each GitHub environment
-- [ ] Create GitHub environments **`lab`** and **`prod`** and set **Variables** / **Secrets** (copy from legacy `integration` / `production` if renaming)
-- [ ] Apply deployment protection on **`prod`** (restrict to `main`, reviewers as needed)
+- [ ] Create GitHub environments **`development`** and **`production`** and set **Variables** / **Secrets** (copy from legacy `lab` / `prod` or `integration` if renaming)
+- [ ] Apply deployment protection on **`production`** (restrict to the repository default branch, reviewers as needed)
 - [ ] Set **`port_org_slug`** (and unique naming if same account)
 - [ ] Confirm **`port_base_url`** matches your Port region
 - [ ] Align **`aws_region`** in varfile with `AWS_REGION` / `AWS_DEFAULT_REGION`

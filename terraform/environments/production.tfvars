@@ -1,12 +1,12 @@
 # -----------------------------------------------------------------------------
-# Prod environment
-# Pass: terraform plan -var-file=environments/prod.tfvars
-# CI: ENVIRONMENT=prod (push to main; workflow_dispatch when selected)
-# Secrets: GitHub environment `prod` + TF_VAR_* for local runs
+# Production environment
+# Pass: terraform plan -var-file=environments/production.tfvars
+# CI: ENVIRONMENT=production (push to default branch; workflow_dispatch when selected)
+# Secrets: GitHub environment `production` + TF_VAR_* for local runs
 # -----------------------------------------------------------------------------
 
 default_resource_tags = {
-  Environment = "prod"
+  Environment = "production"
   ManagedBy   = "terraform"
   Project     = "port-ocean-aws"
   Repository  = "port-integration-aws-onprem-tf"
