@@ -24,7 +24,6 @@ name: port-integration-aws-onprem-tf
 #            (+ AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY if static creds)
 #
 # Pipeline defaults (workflow env — edit in this file, not GitHub variables):
-#   ENV_LAB, ENV_PROD — deployment environment names (keep workflow_dispatch options in sync)
 #   TERRAFORM_VERSION — Terraform CLI for hashicorp/setup-terraform (default 1.14.5;
 #                       must satisfy terraform/terraform.tf required_version)
 #
@@ -72,9 +71,6 @@ permissions:
   contents: read
 
 env:
-  # Deployment environment names — keep workflow_dispatch options above in sync.
-  ENV_LAB: lab
-  ENV_PROD: prod
   # Terraform CLI for format + plan/apply/destroy.
   TERRAFORM_VERSION: "1.14.5"
 
@@ -103,11 +99,12 @@ jobs:
       (github.event_name == 'pull_request' &&
         github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    # ENVIRONMENT drives GitHub Actions environment (secrets/vars) AND
-    # terraform/environments/$ENVIRONMENT.tfvars
+    # Deployment env names: lab (non-main / PR) and prod (main). Must match
+    # workflow_dispatch inputs.environment options and terraform/environments/<name>.tfvars.
+    # (Literal strings required — env context is not available on environment/concurrency/job env.)
     environment: >-
       ${{ github.event_name == 'workflow_dispatch' && inputs.environment ||
-          github.ref == 'refs/heads/main' && env.ENV_PROD || env.ENV_LAB }}
+          github.ref == 'refs/heads/main' && 'prod' || 'lab' }}
     permissions:
       id-token: write
       contents: read
@@ -115,12 +112,12 @@ jobs:
     concurrency:
       group: >-
         port-integration-aws-${{ github.event_name == 'workflow_dispatch' && inputs.environment ||
-          github.ref == 'refs/heads/main' && env.ENV_PROD || env.ENV_LAB }}
+          github.ref == 'refs/heads/main' && 'prod' || 'lab' }}
       cancel-in-progress: false
     env:
       ENVIRONMENT: >-
         ${{ github.event_name == 'workflow_dispatch' && inputs.environment ||
-            github.ref == 'refs/heads/main' && env.ENV_PROD || env.ENV_LAB }}
+            github.ref == 'refs/heads/main' && 'prod' || 'lab' }}
       RUN_PLAN: >-
         ${{ github.event_name == 'pull_request' ||
             github.event_name == 'push' ||
@@ -153,29 +150,46 @@ jobs:
           echo "TFVAR_FILE=environments/${ENVIRONMENT}.tfvars" >> "$GITHUB_ENV"
           echo "TF_WORKSPACE=${{ vars.TFC_WORKSPACE_SLUG }}-${ENVIRONMENT}" >> "$GITHUB_ENV"
 
+      - name: Validate GitHub Actions environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          err_file="${RUNNER_TEMP}/gh-env.err"
+          # List environments (GET single env + -i/--silent does not yield a parseable status line).
+          found=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/environments" \
+            --jq "([.environments[].name] | index(\"${ENVIRONMENT}\")) != null" \
+            2>"$err_file" || echo "false")
+          if [ "$found" = "true" ]; then
+            echo "GitHub Actions environment '${ENVIRONMENT}' found."
+            exit 0
+          fi
+          http_code=$(grep -oE 'HTTP [0-9]{3}' "$err_file" 2>/dev/null | tail -1 | awk '{print $2}')
+          echo "::error::GitHub Actions environment '${ENVIRONMENT}' not found (HTTP ${http_code:-unknown})."
+          if [ -s "$err_file" ]; then
+            echo "gh api output:"
+            cat "$err_file"
+          fi
+          echo "Create it under Settings → Environments, define variables/secrets, then re-run."
+          exit 1
+
       - name: Validate environment config
         run: |
           set -euo pipefail
+          if [ ! -f "terraform/$TFVAR_FILE" ]; then
+            echo "::error::Varfile not found: terraform/$TFVAR_FILE"
+            echo "ENVIRONMENT must match terraform/environments/<name>.tfvars (e.g. environments/${ENVIRONMENT}.tfvars)."
+            exit 1
+          fi
+
           missing=()
           if [ "${{ env.USE_TERRAFORM_CLOUD_BACKEND }}" != "false" ]; then
             [ -z "${{ vars.TFC_ORGANIZATION }}" ] && missing+=(TFC_ORGANIZATION)
             [ -z "${{ vars.TFC_WORKSPACE_SLUG }}" ] && missing+=(TFC_WORKSPACE_SLUG)
             [ -z "${{ vars.TFC_WORKSPACE_TAGS }}" ] && missing+=(TFC_WORKSPACE_TAGS)
             [ -z "${{ secrets.TF_API_TOKEN }}" ] && missing+=(TF_API_TOKEN)
-          fi
-          if [ ! -f "terraform/$TFVAR_FILE" ]; then
-            echo "::error::Varfile not found: terraform/$TFVAR_FILE"
-            echo "ENVIRONMENT must match terraform/environments/<name>.tfvars (e.g. environments/${ENVIRONMENT}.tfvars)."
-            exit 1
-          fi
-          http_code=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            "/repos/${GITHUB_REPOSITORY}/environments/${ENVIRONMENT}" \
-            --silent --include --output /tmp/gh-env.json --write-out '%{http_code}' || true)
-          if [ "$http_code" != "200" ]; then
-            echo "::error::GitHub Actions environment '${ENVIRONMENT}' not found (HTTP ${http_code})."
-            echo "Create it under Settings → Environments, copy variables/secrets, then re-run."
-            exit 1
           fi
           if [ "${{ env.USE_AWS_STATIC_CREDENTIALS }}" = "true" ]; then
             [ -z "$AWS_REGION" ] && missing+=(AWS_REGION)
@@ -189,6 +203,7 @@ jobs:
           [ -z "${{ vars.PORT_CLIENT_ID }}" ] && missing+=(PORT_CLIENT_ID)
           [ -z "$TF_VAR_port_client_secret" ] && missing+=(PORT_CLIENT_SECRET)
           [ -z "$TF_VAR_live_events_api_key" ] && missing+=(PORT_LIVE_EVENTS_API_KEY)
+
           if [ ${#missing[@]} -ne 0 ]; then
             echo "::error::Missing or empty: ${missing[*]}"
             echo "Set each in GitHub → Settings → Environments → ${ENVIRONMENT} (Variables and Secrets)."
