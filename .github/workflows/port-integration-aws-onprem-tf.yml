@@ -14,7 +14,7 @@ name: port-integration-aws-onprem-tf
 # Triggers → Terraform:
 #   push (non-main)     → plan (integration)
 #   pull_request        → plan (integration)
-#   push to main        → plan (log), plan -out (artifact), apply saved plan (production)
+#   push to main        → plan -out (artifact), apply saved plan (production)
 #   workflow_dispatch   → plan or destroy (chosen environment)
 #
 # Per-environment config: GitHub → Settings → Environments → <name>
@@ -230,11 +230,11 @@ jobs:
         run: terraform validate
 
       - name: Terraform plan
-        if: ${{ env.RUN_PLAN == 'true' }}
+        if: ${{ env.RUN_PLAN == 'true' && env.RUN_APPLY != 'true' }}
         working-directory: terraform
         run: terraform plan -input=false -var-file="$TFVAR_FILE"
 
-      - name: Terraform plan (saved for apply)
+      - name: Terraform plan (output artifact)
         if: ${{ env.RUN_APPLY == 'true' }}
         working-directory: terraform
         run: terraform plan -input=false -var-file="$TFVAR_FILE" -out="$TF_PLAN_FILE"

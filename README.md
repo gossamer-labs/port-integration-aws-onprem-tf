@@ -176,12 +176,12 @@ Workflow: [`.github/workflows/port-integration-aws-onprem-tf.yml`](.github/workf
 |---------|---------------|-----------|
 | **Push** (non-`main`, path filter) | `integration` | `plan` |
 | **Pull request** (`terraform/**` or workflow) | `integration` | `plan` (same-repo PRs only; forks skip) |
-| **Push to `main`** | `production` | `plan` (log), `plan -out` (artifact), `apply` (saved plan) |
+| **Push to `main`** | `production` | `plan -out` (artifact), `apply` (saved plan) |
 | **`workflow_dispatch`** | Required input (`integration` / `production`) | `plan` or `destroy` |
 
 `ENVIRONMENT` is **never** a GitHub variable — the pipeline sets it. Restrict production deploys to `main` via GitHub **environment protection** on `production`.
 
-On push to `main`, apply always uses the binary plan file (`terraform/tfplan`) produced in the same job; the workflow also uploads that file as a run artifact (`tfplan-production-<run_id>`) for audit.
+On push to `main`, a single `plan -out` step produces the binary plan file (`terraform/tfplan`); apply uses that file in the same job, and the workflow uploads it as a run artifact (`tfplan-production-<run_id>`) for audit.
 
 Before opening a PR, run from `terraform/`: **`terraform fmt -recursive`**.
 
