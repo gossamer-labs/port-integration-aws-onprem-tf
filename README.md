@@ -187,6 +187,8 @@ Before opening a PR, run from `terraform/`: **`terraform fmt -recursive`**.
 
 ### Per-environment GitHub config
 
+The workflow **Validate environment config** step fails fast if any required variable or secret below is missing for the target environment.
+
 **Variables** (Settings → Environments → `<name>`)
 
 | Variable | Purpose |

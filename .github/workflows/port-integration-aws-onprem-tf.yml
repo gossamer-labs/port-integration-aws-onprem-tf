@@ -100,7 +100,7 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     # ENVIRONMENT drives GitHub Actions environment (secrets/vars) AND
-    # terraform/environments/$ENVIRONMENT.tfvars — keep both expressions identical.
+    # terraform/environments/$ENVIRONMENT.tfvars
     environment: >-
       ${{ github.event_name == 'workflow_dispatch' && inputs.environment ||
           github.ref == 'refs/heads/main' && 'production' || 'integration' }}
@@ -148,31 +148,36 @@ jobs:
           echo "TFVAR_FILE=environments/${ENVIRONMENT}.tfvars" >> "$GITHUB_ENV"
           echo "TF_WORKSPACE=${{ vars.TFC_WORKSPACE_SLUG }}-${ENVIRONMENT}" >> "$GITHUB_ENV"
 
-      - name: Validate inputs
+      - name: Validate environment config
         run: |
           set -euo pipefail
           missing=()
           if [ "${{ env.USE_TERRAFORM_CLOUD_BACKEND }}" != "false" ]; then
             [ -z "${{ vars.TFC_ORGANIZATION }}" ] && missing+=(TFC_ORGANIZATION)
             [ -z "${{ vars.TFC_WORKSPACE_SLUG }}" ] && missing+=(TFC_WORKSPACE_SLUG)
-            [ -z "$TF_WORKSPACE" ] && missing+=(TF_WORKSPACE)
             [ -z "${{ vars.TFC_WORKSPACE_TAGS }}" ] && missing+=(TFC_WORKSPACE_TAGS)
+            [ -z "${{ secrets.TF_API_TOKEN }}" ] && missing+=(TF_API_TOKEN)
           fi
           if [ ! -f "terraform/$TFVAR_FILE" ]; then
             echo "::error::Varfile not found: terraform/$TFVAR_FILE"
             echo "Copy environments/example.tfvars to environments/${ENVIRONMENT}.tfvars (or your environment name)."
             exit 1
           fi
-          if [ "${{ env.USE_AWS_STATIC_CREDENTIALS }}" != "true" ]; then
+          if [ "${{ env.USE_AWS_STATIC_CREDENTIALS }}" = "true" ]; then
+            [ -z "$AWS_REGION" ] && missing+=(AWS_REGION)
+            [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && missing+=(AWS_ACCESS_KEY_ID)
+            [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ] && missing+=(AWS_SECRET_ACCESS_KEY)
+          else
             [ -z "$AWS_REGION" ] && missing+=(AWS_REGION)
             [ -z "$AWS_ACCOUNT_ID" ] && missing+=(AWS_ACCOUNT_ID)
             [ -z "$AWS_ROLE_NAME" ] && missing+=(AWS_ROLE_NAME)
           fi
+          [ -z "${{ vars.PORT_CLIENT_ID }}" ] && missing+=(PORT_CLIENT_ID)
+          [ -z "$TF_VAR_port_client_secret" ] && missing+=(PORT_CLIENT_SECRET)
+          [ -z "$TF_VAR_live_events_api_key" ] && missing+=(PORT_LIVE_EVENTS_API_KEY)
           if [ ${#missing[@]} -ne 0 ]; then
             echo "::error::Missing or empty: ${missing[*]}"
-            echo "Set each value in GitHub → Settings → Environments → ${ENVIRONMENT}"
-            echo "  (Variables and Secrets for that environment)."
-            echo "TFC workspace: TFC_WORKSPACE_SLUG-ENVIRONMENT."
+            echo "Set each in GitHub → Settings → Environments → ${ENVIRONMENT} (Variables and Secrets)."
             exit 1
           fi
 
