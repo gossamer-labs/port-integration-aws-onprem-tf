@@ -3,13 +3,19 @@ name: port-integration-aws-onprem-tf
 # -----------------------------------------------------------------------------
 # ENVIRONMENT rules (invariants):
 #   1. ENVIRONMENT is set by the pipeline only — never a GitHub variable.
-#   2. pull_request → integration; push to main → production.
-#   3. workflow_dispatch → required input (no default).
+#   2. pull_request and push (non-main) → integration; push to main → production.
+#   3. workflow_dispatch → required environment input; mode is plan or destroy only.
 #   4. ENVIRONMENT must match: GitHub Actions environment name,
 #      terraform/environments/<name>.tfvars, and TFC workspace suffix
 #      ($TFC_WORKSPACE_SLUG-$ENVIRONMENT).
 #   5. Production deploy gate: GitHub environment protection on `production`
 #      (restrict to main) — not enforced in this YAML.
+#
+# Triggers → Terraform:
+#   push (non-main)     → plan (integration)
+#   pull_request        → plan (integration)
+#   push to main        → plan (log), plan -out (artifact), apply saved plan (production)
+#   workflow_dispatch   → plan or destroy (chosen environment)
 #
 # Per-environment config: GitHub → Settings → Environments → <name>
 #   Variables: TFC_ORGANIZATION, TFC_WORKSPACE_SLUG, TFC_WORKSPACE_TAGS,
@@ -37,8 +43,6 @@ on:
       - "terraform/**"
       - ".github/workflows/port-integration-aws-onprem-tf.yml"
   push:
-    branches:
-      - main
     paths:
       - "terraform/**"
       - ".github/workflows/port-integration-aws-onprem-tf.yml"
@@ -60,38 +64,8 @@ on:
         type: choice
         options:
           - plan
-          - apply
           - destroy
         default: plan
-      tf_workspace:
-        description: >-
-          Optional full Terraform Cloud workspace name override (bypasses
-          TFC_WORKSPACE_SLUG-$ENVIRONMENT convention)
-        required: false
-        type: string
-        default: ""
-      tfvar_file:
-        description: >-
-          Optional varfile path override under terraform/ (default:
-          environments/$ENVIRONMENT.tfvars)
-        required: false
-        type: string
-        default: ""
-      aws_region:
-        description: "Overrides AWS_REGION when set; must match aws_region in your varfile"
-        required: false
-        type: string
-        default: ""
-      aws_account_id:
-        description: "Overrides AWS_ACCOUNT_ID when set (OIDC role ARN account segment)"
-        required: false
-        type: string
-        default: ""
-      aws_role_name:
-        description: "Overrides AWS_ROLE_NAME when set (IAM role name only, not full ARN)"
-        required: false
-        type: string
-        default: ""
 
 permissions:
   contents: read
@@ -121,8 +95,9 @@ jobs:
     needs: [format]
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     # ENVIRONMENT drives GitHub Actions environment (secrets/vars) AND
     # terraform/environments/$ENVIRONMENT.tfvars — keep both expressions identical.
@@ -141,33 +116,28 @@ jobs:
       ENVIRONMENT: >-
         ${{ github.event_name == 'workflow_dispatch' && inputs.environment ||
             github.ref == 'refs/heads/main' && 'production' || 'integration' }}
-      # --- Backend: where Terraform state is stored (all environments) ---
+      RUN_PLAN: >-
+        ${{ github.event_name == 'pull_request' ||
+            github.event_name == 'push' ||
+            (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'plan') }}
+      RUN_APPLY: >-
+        ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      RUN_DESTROY: >-
+        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'destroy' }}
+      # Backend: where Terraform state is stored (all environments)
       USE_TERRAFORM_CLOUD_BACKEND: "true"
-      # --- AWS auth: OIDC (false) vs static key/secret (true) — independent of backend ---
+      # AWS auth: OIDC (false) vs static key/secret (true) — independent of backend
       USE_AWS_STATIC_CREDENTIALS: "false"
-      TF_MODE: >-
-        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode ||
-        (github.event_name == 'pull_request' && 'plan' ||
-          github.event_name == 'push' && 'apply') }}
-      AWS_REGION: >-
-        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_region ||
-          vars.AWS_REGION }}
-      AWS_ACCOUNT_ID: >-
-        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_account_id ||
-          vars.AWS_ACCOUNT_ID }}
-      AWS_ROLE_NAME: >-
-        ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aws_role_name ||
-          vars.AWS_ROLE_NAME }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_ROLE_NAME: ${{ vars.AWS_ROLE_NAME }}
       TF_AWS_ROLE_ARN: >-
-        ${{ format('arn:aws:iam::{0}:role/{1}',
-            github.event_name == 'workflow_dispatch' && github.event.inputs.aws_account_id ||
-              vars.AWS_ACCOUNT_ID,
-            github.event_name == 'workflow_dispatch' && github.event.inputs.aws_role_name ||
-              vars.AWS_ROLE_NAME) }}
+        ${{ format('arn:aws:iam::{0}:role/{1}', vars.AWS_ACCOUNT_ID, vars.AWS_ROLE_NAME) }}
       TF_CLOUD_ORGANIZATION: ${{ vars.TFC_ORGANIZATION }}
       TF_VAR_port_client_id: ${{ vars.PORT_CLIENT_ID }}
       TF_VAR_port_client_secret: ${{ secrets.PORT_CLIENT_SECRET }}
       TF_VAR_live_events_api_key: ${{ secrets.PORT_LIVE_EVENTS_API_KEY }}
+      TF_PLAN_FILE: tfplan
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -175,16 +145,8 @@ jobs:
       - name: Set derived variables
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tfvar_file }}" ]; then
-            echo "TFVAR_FILE=${{ github.event.inputs.tfvar_file }}" >> "$GITHUB_ENV"
-          else
-            echo "TFVAR_FILE=environments/${ENVIRONMENT}.tfvars" >> "$GITHUB_ENV"
-          fi
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tf_workspace }}" ]; then
-            echo "TF_WORKSPACE=${{ github.event.inputs.tf_workspace }}" >> "$GITHUB_ENV"
-          else
-            echo "TF_WORKSPACE=${{ vars.TFC_WORKSPACE_SLUG }}-${ENVIRONMENT}" >> "$GITHUB_ENV"
-          fi
+          echo "TFVAR_FILE=environments/${ENVIRONMENT}.tfvars" >> "$GITHUB_ENV"
+          echo "TF_WORKSPACE=${{ vars.TFC_WORKSPACE_SLUG }}-${ENVIRONMENT}" >> "$GITHUB_ENV"
 
       - name: Validate inputs
         run: |
@@ -210,8 +172,7 @@ jobs:
             echo "::error::Missing or empty: ${missing[*]}"
             echo "Set each value in GitHub → Settings → Environments → ${ENVIRONMENT}"
             echo "  (Variables and Secrets for that environment)."
-            echo "Optional workflow_dispatch inputs override AWS_* when non-empty."
-            echo "TFC workspace defaults to TFC_WORKSPACE_SLUG-ENVIRONMENT unless tf_workspace is set."
+            echo "TFC workspace: TFC_WORKSPACE_SLUG-ENVIRONMENT."
             exit 1
           fi
 
@@ -254,8 +215,8 @@ jobs:
 
       - name: Terraform init
         if: >-
-          ${{ env.TF_MODE == 'plan' || env.TF_MODE == 'apply' ||
-            (env.TF_MODE == 'destroy' && (
+          ${{ env.RUN_PLAN == 'true' || env.RUN_APPLY == 'true' ||
+            (env.RUN_DESTROY == 'true' && (
               env.USE_TERRAFORM_CLOUD_BACKEND == 'false' ||
               env.USE_TERRAFORM_CLOUD_BACKEND != 'false' &&
                 steps.ensure_workspace.outputs.workspace_exists == 'true'
@@ -264,23 +225,36 @@ jobs:
         run: terraform init -input=false
 
       - name: Terraform validate
-        if: ${{ env.TF_MODE != 'destroy' }}
+        if: ${{ env.RUN_PLAN == 'true' || env.RUN_APPLY == 'true' }}
         working-directory: terraform
         run: terraform validate
 
       - name: Terraform plan
-        if: ${{ env.TF_MODE == 'plan' }}
+        if: ${{ env.RUN_PLAN == 'true' }}
         working-directory: terraform
         run: terraform plan -input=false -var-file="$TFVAR_FILE"
 
-      - name: Terraform apply
-        if: ${{ env.TF_MODE == 'apply' }}
+      - name: Terraform plan (saved for apply)
+        if: ${{ env.RUN_APPLY == 'true' }}
         working-directory: terraform
-        run: terraform apply -auto-approve -input=false -var-file="$TFVAR_FILE"
+        run: terraform plan -input=false -var-file="$TFVAR_FILE" -out="$TF_PLAN_FILE"
+
+      - name: Upload Terraform plan
+        if: ${{ env.RUN_APPLY == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ env.ENVIRONMENT }}-${{ github.run_id }}
+          path: terraform/${{ env.TF_PLAN_FILE }}
+          retention-days: 30
+
+      - name: Terraform apply
+        if: ${{ env.RUN_APPLY == 'true' }}
+        working-directory: terraform
+        run: terraform apply -input=false -auto-approve "$TF_PLAN_FILE"
 
       - name: Terraform destroy
         if: >-
-          ${{ env.TF_MODE == 'destroy' && (
+          ${{ env.RUN_DESTROY == 'true' && (
               env.USE_TERRAFORM_CLOUD_BACKEND == 'false' ||
               env.USE_TERRAFORM_CLOUD_BACKEND != 'false' &&
                 steps.ensure_workspace.outputs.workspace_exists == 'true'

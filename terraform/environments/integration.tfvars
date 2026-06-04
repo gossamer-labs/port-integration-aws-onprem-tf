@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # Integration environment
 # Pass: terraform plan -var-file=environments/integration.tfvars
-# CI: ENVIRONMENT=integration (PRs / non-main workflow_dispatch)
+# CI: ENVIRONMENT=integration (PRs / push to non-main branches)
 # Secrets: GitHub environment `integration` + TF_VAR_* for local runs
 # -----------------------------------------------------------------------------
 
