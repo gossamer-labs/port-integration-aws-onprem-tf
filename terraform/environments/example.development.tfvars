@@ -1,12 +1,12 @@
 # -----------------------------------------------------------------------------
-# Copy this file once per GitHub Actions environment you define, e.g.:
-#   cp environments/example.tfvars environments/integration.tfvars
-#   cp environments/example.tfvars environments/production.tfvars
-#   cp environments/example.tfvars environments/<your-env>.tfvars
+# Copy the appropriate example file for each GitHub Actions environment you define, e.g.:
+#   cp environments/example.development.tfvars environments/development.tfvars
+#   cp environments/example.production.tfvars  environments/production.tfvars
+#   cp environments/example.development.tfvars environments/<your-env>.tfvars
 #
 # The following must match the environment name exactly:
 #   - GitHub Actions environment (Settings → Environments → <your-env>)
-#   - CI ENVIRONMENT value (integration / production / <your-env>)
+#   - CI ENVIRONMENT value (development / production / <your-env>)
 #   - Terraform Cloud workspace suffix: $TFC_WORKSPACE_SLUG-<your-env>
 #
 # Secrets and variables are NOT committed in this template — configure per environment:
@@ -25,7 +25,7 @@
 #
 #   # Terraform Cloud (when using cloud {} in terraform.tf)
 #   export TF_CLOUD_ORGANIZATION="..."
-#   export TF_WORKSPACE="<TFC_WORKSPACE_SLUG>-<your-env>"   # e.g. port-integration-aws-onprem-tf-integration
+#   export TF_WORKSPACE="<TFC_WORKSPACE_SLUG>-<your-env>"   # e.g. port-integration-aws-onprem-tf-development
 #   export TF_TOKEN_app_terraform_io="..."   # or: terraform login
 #
 #   # AWS (provider uses aws_region from this varfile; align region with your credentials)
@@ -33,8 +33,8 @@
 #   export AWS_DEFAULT_REGION="<same-as-aws_region-below>"
 #
 # Optional private overlay (gitignored): environments/<name>.local.tfvars
-#   terraform plan -var-file=environments/integration.tfvars \
-#     -var-file=environments/integration.local.tfvars
+#   terraform plan -var-file=environments/development.tfvars \
+#     -var-file=environments/development.local.tfvars
 #
 # This file lists every root-module variable defined in terraform/variables_*.tf.
 # Uncomment or override blocks that match your install; commented lines show shape only.
@@ -42,7 +42,7 @@
 #
 # Resource naming — must be unique per environment
 #
-# If integration and production (or any two environments) share the same AWS account
+# If development and production (or any two environments) share the same AWS account
 # and region, set DIFFERENT values for every variable below. Otherwise apply will fail
 # on duplicate names (ECS cluster, IAM roles, CloudTrail, S3 bucket, Port integration ID).
 #
@@ -51,10 +51,10 @@
 # | port_org_slug            | Port integration ID, IAM roles, ECS service name        |
 # | cluster_name             | ECS cluster                                             |
 # | network_vpc_name         | VPC Name tag (used by data.aws_vpc lookup)              |
-# | network_vpc_cidr       | VPC CIDR (use non-overlapping ranges per env)             |
+# | network_vpc_cidr         | VPC CIDR (use non-overlapping ranges per env)           |
 # | cloudtrail_name_prefix   | CloudTrail trail + managed S3 log bucket name           |
 #
-# Example suffix pattern: integration → *-int / goss-int; production → *-prd / goss-prd.
+# AWS resource names are independent of the GitHub Actions environment name.
 #
 # Separate AWS accounts per environment (recommended for production): only port_org_slug
 # (Port-side) and cloudtrail_name_prefix (S3 bucket names are globally unique) must differ.
@@ -67,15 +67,15 @@
 # ============================================================
 # AWS provider & tagging
 # ============================================================
-aws_region = "<aws-region>"
-
 # Applied to every AWS resource via the provider default_tags block (merge/replace defaults as needed).
-# default_resource_tags = {
-#   Environment = "<your-env>"
-#   ManagedBy   = "terraform"
-#   Project     = "port-ocean-aws"
-#   Repository  = "<your-repo>"
-# }
+default_resource_tags = {
+  Environment = "<env>"
+  ManagedBy   = "terraform"
+  Project     = "port-ocean-aws"
+  Repository  = "<repo-name>"
+}
+
+aws_region = "<aws-region>"
 
 # ============================================================
 # Port integration — pick ONE path: live events (single account) OR polling (multi-account)
@@ -114,7 +114,7 @@ port_org_slug = "<port-org-slug>" # Keep slug short so IAM role names stay <= 64
 event_listener_type       = "POLLING"
 scheduled_resync_interval = 1440
 
-cluster_name = "port-ocean-aws-exporter"
+cluster_name = "port-exporter-<your-env>"
 
 # Upstream “default security group” for the ECS service.
 create_default_sg = true
@@ -131,9 +131,9 @@ cloudtrail_enabled      = true
 
 # live_events_api_key — unset here; use PORT_LIVE_EVENTS_API_KEY (CI) or TF_VAR_live_events_api_key (local).
 
-# CloudTrail (created only when allow_incoming_requests && cloudtrail_enabled; see cloudtrail.tf and README “Live events prerequisites”).
+# CloudTrail (created only when allow_incoming_requests && cloudtrail_enabled; see cloudtrail.tf).
 # cloudtrail_name_prefix must be 3–36 chars, lowercase [a-z0-9-], no leading/trailing hyphen.
-# cloudtrail_name_prefix = "port-exporter"
+cloudtrail_name_prefix = "port-exporter-<your-env>"
 
 # Lifecycle on the managed log bucket (ignored if you bring your own bucket below).
 # cloudtrail_log_bucket_object_expiration_days            = 365
@@ -157,7 +157,7 @@ cloudtrail_enabled      = true
 
 # --- Path 1: create a VPC --- set network_use_existing_vpc = false (true = Path 2 / existing VPC).
 network_use_existing_vpc     = false
-network_vpc_name             = "port-ocean"
+network_vpc_name             = "port-ocean-<your-env>"
 network_vpc_cidr             = "10.48.0.0/16"
 network_public_subnet_cidrs  = ["10.48.0.0/24", "10.48.1.0/24"]
 network_private_subnet_cidrs = [] # non-empty requires network_enable_nat_gateway = true

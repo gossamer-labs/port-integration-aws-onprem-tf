@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Production environment
+# Production environment example
 # Pass: terraform plan -var-file=environments/production.tfvars
 # CI: ENVIRONMENT=production (push to default branch; workflow_dispatch when selected)
 # Secrets: GitHub environment `production` + TF_VAR_* for local runs
@@ -9,10 +9,10 @@ default_resource_tags = {
   Environment = "production"
   ManagedBy   = "terraform"
   Project     = "port-ocean-aws"
-  Repository  = "port-integration-aws-onprem-tf"
+  Repository  = "<your-repo-name>"
 }
 
-aws_region = "us-east-2"
+aws_region = "<your-aws-region>"
 
 network_use_existing_vpc     = false
 network_vpc_name             = "port-ocean-prod"
@@ -24,7 +24,8 @@ network_enable_nat_gateway   = false
 port_base_url = "https://api.us.port.io"
 
 # Drives Port integration ID (onprem-tf-<slug>), IAM roles, and ECS service name.
-port_org_slug = "goss-prod"
+port_org_slug = "acme-prod"
+# integration_identifier = "onprem-tf-myorg-env"
 
 initialize_port_resources = true
 
